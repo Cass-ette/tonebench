@@ -8,7 +8,7 @@ let package = Package(
   targets: [
     .target(
       name: "ToneDSP", publicHeadersPath: "include",
-      linkerSettings: [.linkedFramework("CoreAudio")]),
+      linkerSettings: [.linkedFramework("CoreAudio"), .linkedFramework("Accelerate")]),
     .executableTarget(
       name: "ToneBench", dependencies: ["ToneDSP"],
       linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),

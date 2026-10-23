@@ -128,4 +128,52 @@ final class DSPTests: XCTestCase {
     XCTAssertEqual(output, [0, 0, 0, 0])
     XCTAssertEqual(tb_faults(processor), 1)
   }
+  func testSpectrumFrequencyLevelStereoAndEQAtDeviceRates() {
+    for rate in [32000.0, 44100, 48000, 96000, 192000] {
+      let p = tb_create(rate)!
+      defer { tb_destroy(p) }
+      let size = Int(tb_spectrum_fft_size(p))
+      // Bin-aligned tone: its Hann-corrected peak must equal -20 dBFS.
+      let frequency = 173 * rate / Double(size)
+      var filters = [band(frequency: frequency, gain: 6)]
+      XCTAssertTrue(tb_update(p, &filters, 1, -2, false))
+      var frequencies = [Float](repeating: 0, count: Int(TB_SPECTRUM_BINS))
+      var before = frequencies
+      var after = frequencies
+      XCTAssertFalse(tb_read_spectrum(p, &frequencies, &before, &after))
+      for block in 0..<(size / 512 + 8) {
+        let left = (0..<512).map { Float(0.1 * sin(2 * .pi * frequency * Double(block * 512 + $0) / rate)) }
+        let right = left.map { -$0 } // Inverted stereo must not cancel.
+        var l = left, r = right
+        tb_process(p, left, right, &l, &r, 512)
+      }
+      XCTAssertTrue(tb_read_spectrum(p, &frequencies, &before, &after))
+      let peak = before.indices.max { before[$0] < before[$1] }!
+      XCTAssertEqual(Double(frequencies[peak]), frequency, accuracy: frequency * 0.025)
+      XCTAssertEqual(before[peak], -20, accuracy: 0.02)
+      XCTAssertEqual(after[peak] - before[peak], 4, accuracy: 0.02)
+      XCTAssertTrue(before.allSatisfy { $0.isFinite })
+      XCTAssertFalse(tb_read_spectrum(p, &frequencies, &before, &after))
+      let zero = [Float](repeating: 0, count: 512)
+      var l = zero, r = zero
+      for _ in 0..<(size / 512 * 2) { tb_process(p, zero, zero, &l, &r, 512) }
+      XCTAssertTrue(tb_read_spectrum(p, &frequencies, &before, &after))
+      XCTAssertTrue(before.allSatisfy { $0 == -120 })
+      XCTAssertTrue(after.allSatisfy { $0 == -120 })
+    }
+  }
+  func testSpectrumRingOverflowDoesNotBlockAudioAndRecovers() {
+    let p = tb_create(48000)!
+    defer { tb_destroy(p) }
+    let input = [Float](repeating: 0.05, count: 512)
+    var l = input, r = input
+    for _ in 0..<180 { tb_process(p, input, input, &l, &r, 512) }
+    XCTAssertEqual(l.last!, 0.05)
+    var f = [Float](repeating: 0, count: Int(TB_SPECTRUM_BINS))
+    var a = f, b = f
+    XCTAssertTrue(tb_read_spectrum(p, &f, &a, &b))
+    tb_process(p, input, input, &l, &r, 512)
+    XCTAssertTrue(tb_read_spectrum(p, &f, &a, &b))
+    XCTAssertEqual(tb_faults(p), 0)
+  }
 }

@@ -35,6 +35,10 @@ import fs from 'node:fs/promises';
       .getByRole('button', { name: '直接手动调音', exact: true })
       .click();
     assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
+    await page
+      .getByText('在 Mac 应用中查看实时频谱', { exact: true })
+      .waitFor();
+    assert.equal(await page.locator('.spectrum-line').count(), 0);
     assert.equal(await page.locator('.curve').count(), 2);
     assert.equal(
       await page
@@ -293,7 +297,10 @@ import fs from 'node:fs/promises';
     await page.reload({ waitUntil: 'networkidle' });
     await page.screenshot({ path: 'test-results/desktop.png', fullPage: true });
     assert.deepEqual(errors, []);
-    const nativePage = await browser.newPage();
+    const nativePage = await browser.newPage({
+      viewport: { width: 1440, height: 1150 },
+    });
+    nativePage.on('pageerror', (error) => errors.push(error.message));
     await nativePage.addInitScript(() => {
       window.__TONEBENCH_NATIVE__ = true;
       window.__nativeMessages = [];
@@ -352,6 +359,59 @@ import fs from 'node:fs/promises';
       ),
     );
     await nativePage.getByText('系统 EQ · 运行中', { exact: true }).waitFor();
+    const spectrum = {
+      frequencies: Array.from(
+        { length: 192 },
+        (_, i) => 20 * 1000 ** ((i + 0.5) / 192),
+      ),
+      before: Array.from(
+        { length: 192 },
+        (_, i) => -85 + 60 * Math.exp(-(((i - 108) / 13) ** 2)),
+      ),
+      after: Array.from(
+        { length: 192 },
+        (_, i) => -91 + 64 * Math.exp(-(((i - 108) / 13) ** 2)),
+      ),
+      sampleRate: 44100,
+      fftSize: 8192,
+    };
+    const sendSpectrum = () =>
+      nativePage.evaluate(
+        (detail) =>
+          window.dispatchEvent(
+            new CustomEvent('tonebench:spectrum', { detail }),
+          ),
+        spectrum,
+      );
+    await sendSpectrum();
+    assert.equal(await nativePage.locator('.spectrum-line').count(), 2);
+    assert.ok(
+      (await nativePage.locator('.spectrum-readout').innerText()).includes(
+        'dBFS',
+      ),
+    );
+    await nativePage
+      .getByRole('button', { name: 'EQ 前', exact: true })
+      .click();
+    assert.equal(await nativePage.locator('.spectrum-line.before').count(), 0);
+    await nativePage
+      .getByRole('button', { name: 'EQ 前', exact: true })
+      .click();
+    await nativePage.locator('.spectrum-panel').scrollIntoViewIfNeeded();
+    await sendSpectrum();
+    await nativePage
+      .locator('.spectrum-panel')
+      .screenshot({ path: 'test-results/spectrum-bridge.png' });
+    // Invalid native data must leave the last valid frame intact.
+    await nativePage.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent('tonebench:spectrum', { detail: { sampleRate: 1 } }),
+      ),
+    );
+    assert.equal(await nativePage.locator('.spectrum-line').count(), 2);
+    await nativePage.waitForTimeout(850);
+    assert.equal(await nativePage.locator('.spectrum-line').count(), 0);
+    await sendSpectrum();
     await nativePage
       .getByText('对数频率 · 44.1 kHz', { exact: true })
       .waitFor();
@@ -377,6 +437,21 @@ import fs from 'node:fs/promises';
       window.dispatchEvent(
         new CustomEvent('tonebench:audio', {
           detail: {
+            phase: 'stopped',
+            message: '',
+            outputDevice: 'Test DAC',
+            sampleRate: 44100,
+            clipped: 0,
+          },
+        }),
+      ),
+    );
+    await nativePage.getByText('开启系统 EQ 后查看', { exact: true }).waitFor();
+    assert.equal(await nativePage.locator('.spectrum-line').count(), 0);
+    await nativePage.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent('tonebench:audio', {
+          detail: {
             phase: 'error',
             message: '系统音频权限未允许',
             outputDevice: 'Test DAC',
@@ -391,6 +466,7 @@ import fs from 'node:fs/promises';
       .getByRole('button', { name: '开启系统 EQ', exact: true })
       .waitFor();
     await nativePage.close();
+    assert.deepEqual(errors, []);
     console.log(
       JSON.stringify(
         {
@@ -412,6 +488,7 @@ import fs from 'node:fs/promises';
             'gear notes',
             '4 viewport sizes',
             'native bridge start/update/bypass/stop/error at 44.1 kHz (mocked)',
+            'spectrum bridge, toggles, invalid data, stale-frame timeout and stop clearing (mocked)',
           ],
           fontInfo,
           errors,

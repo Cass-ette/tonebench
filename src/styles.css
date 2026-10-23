@@ -556,6 +556,151 @@ h1 {
 .main-column {
   min-width: 0;
 }
+.spectrum-panel {
+  margin-top: 20px;
+}
+.spectrum-status,
+.spectrum-toolbar,
+.spectrum-legend,
+.spectrum-readout {
+  display: flex;
+  align-items: center;
+}
+.spectrum-status {
+  gap: 6px;
+  color: var(--faint);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.spectrum-status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #656c75;
+}
+.spectrum-status.active {
+  color: #b9cbdc;
+}
+.spectrum-status.active i {
+  background: #a9c5df;
+}
+.spectrum-toolbar {
+  padding: 14px 17px 0;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.spectrum-legend {
+  gap: 16px;
+}
+.spectrum-swatch {
+  display: inline-block;
+  width: 16px;
+  border-top: 1px solid #838a94;
+}
+.spectrum-swatch.after {
+  border-color: #bbd3e9;
+}
+.spectrum-readout {
+  gap: 14px;
+  color: #bbc3cd;
+  font: 10px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.spectrum-readout > span:first-child {
+  color: #818b98;
+  min-width: 65px;
+}
+.spectrum-plot {
+  position: relative;
+  margin: 2px 0 0;
+}
+.spectrum-plot > svg {
+  width: 100%;
+  display: block;
+  touch-action: pan-y;
+}
+.spectrum-grid {
+  stroke: #30343a;
+  stroke-width: 0.65;
+}
+.spectrum-grid.vertical {
+  stroke: #292d32;
+}
+.spectrum-axis {
+  fill: #78818c;
+  font: 10px var(--mono);
+}
+.spectrum-line {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.spectrum-line.before {
+  stroke: #858d98;
+  stroke-width: 1;
+  opacity: 0.7;
+}
+.spectrum-line.after {
+  stroke: #bbd3e9;
+  stroke-width: 1.35;
+}
+.spectrum-cursor {
+  stroke: #697785;
+  stroke-width: 0.7;
+  stroke-dasharray: 3 4;
+}
+.spectrum-point {
+  fill: #d3e4f4;
+}
+.spectrum-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b95a1;
+  font-size: 11px;
+  pointer-events: none;
+}
+.spectrum-empty::before {
+  content: '';
+  position: absolute;
+  width: 220px;
+  height: 40px;
+  background: #1b1d20;
+  z-index: -1;
+}
+.spectrum-regions {
+  display: grid;
+  grid-template-columns: 15.9fr 20.7fr 30.1fr 15.9fr 17.4fr;
+  margin: -1px 1.9% 12px 5.1%;
+  color: #737d88;
+  font-size: 9px;
+  text-align: center;
+}
+.spectrum-regions span + span {
+  border-left: 1px solid #30343a;
+}
+@media (max-width: 600px) {
+  .spectrum-toolbar {
+    padding: 12px 12px 0;
+    gap: 10px;
+  }
+  .spectrum-readout {
+    font-size: 9px;
+    gap: 8px;
+  }
+  .spectrum-legend {
+    gap: 10px;
+  }
+  .spectrum-panel .subtle-en {
+    display: none;
+  }
+  .spectrum-axis {
+    font-size: 12px;
+  }
+}
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);

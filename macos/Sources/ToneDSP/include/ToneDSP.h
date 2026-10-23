@@ -25,4 +25,10 @@ OSStatus tb_io_proc(AudioObjectID, const AudioTimeStamp * _Nonnull, const AudioB
 uint64_t tb_callbacks(TBProcessor * _Nonnull);
 uint64_t tb_faults(TBProcessor * _Nonnull);
 uint64_t tb_clipped(TBProcessor * _Nonnull);
+#define TB_SPECTRUM_BINS 192
+// Single non-audio consumer. Stereo mean power; peak-normalized Hann FFT, dBFS.
+// False means no complete fresh window. Never call concurrently with destroy.
+bool tb_read_spectrum(TBProcessor * _Nonnull, float * _Nonnull frequencies,
+                      float * _Nonnull before, float * _Nonnull after);
+uint32_t tb_spectrum_fft_size(TBProcessor * _Nonnull);
 #endif

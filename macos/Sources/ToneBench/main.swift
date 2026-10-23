@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
   private let smokeTest = CommandLine.arguments.contains("--smoke-test")
   private let audioCheck = CommandLine.arguments.contains("--audio-check")
   private var audioCheckFinished = false
+  private var spectrumCheckFinished = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
@@ -101,6 +102,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         "window.dispatchEvent(new CustomEvent('tonebench:audio', {detail: \(json)}));",
         completionHandler: nil)
       if self?.audioCheck == true { self?.recordAudioCheck(status) }
+    }
+    engine.onSpectrum = { [weak self] frame in
+      let json: String
+      if let frame, let data = try? JSONSerialization.data(withJSONObject: frame),
+        let text = String(data: data, encoding: .utf8)
+      { json = text } else { json = "null" }
+      self?.web.evaluateJavaScript(
+        "window.dispatchEvent(new CustomEvent('tonebench:spectrum', {detail: \(json)}));",
+        completionHandler: nil)
+      if self?.audioCheck == true, let frame { self?.recordSpectrumCheck(frame) }
     }
     web.load(URLRequest(url: URL(string: "tonebench://app/")!))
     NSApp.activate(ignoringOtherApps: true)
@@ -183,7 +194,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     if audioCheck {
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-        self.engine.start(EQSettings(bands: [], preamp: 0, bypass: true, autoPreamp: true))
+        self.web.evaluateJavaScript(
+          "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '直接手动调音')?.click()"
+        ) { _, _ in
+          self.engine.start(EQSettings(bands: [], preamp: 0, bypass: true, autoPreamp: true))
+        }
       }
     }
     guard smokeTest else { return }
@@ -242,6 +257,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
         self.engine.stop()
         NSApp.terminate(nil)
+      }
+    }
+  }
+  private func recordSpectrumCheck(_ frame: [String: Any]) {
+    guard !spectrumCheckFinished else { return }
+    spectrumCheckFinished = true
+    let root = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("test-results")
+    try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let levels = frame["after"] as? [Float] ?? []
+    let report: [String: Any] = [
+      "sampleRate": frame["sampleRate"] ?? 0, "fftSize": frame["fftSize"] ?? 0,
+      "bins": levels.count, "maximumDBFS": levels.max() ?? -120,
+      "finite": levels.allSatisfy { $0.isFinite },
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
+      try? data.write(to: root.appendingPathComponent("native-spectrum-check.json"))
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+      self.web.evaluateJavaScript(
+        "document.querySelector('.spectrum-panel')?.scrollIntoView({block:'center'})"
+      ) { _, _ in
+        self.web.takeSnapshot(with: nil) { image, _ in
+          if let tiff = image?.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+            let png = bitmap.representation(using: .png, properties: [:])
+          { try? png.write(to: root.appendingPathComponent("native-spectrum.png")) }
+        }
       }
     }
   }

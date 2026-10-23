@@ -96,6 +96,10 @@ private func validateFormat(_ format: AudioStreamBasicDescription, _ rate: Doubl
 // with preallocated state and an atomic, single-producer/single-consumer queue.
 final class AudioEngine {
   var onChange: (([String: Any]) -> Void)?
+  var onSpectrum: (([String: Any]?) -> Void)?
+  private let analysisQueue = DispatchQueue(label: "app.tonebench.spectrum", qos: .utility)
+  private var spectrumTimer: DispatchSourceTimer?
+  private var spectrumSession = UUID()
   private var tap: AudioObjectID = 0
   private var aggregate: AudioObjectID = 0
   private var output: AudioObjectID = 0
@@ -231,6 +235,7 @@ final class AudioEngine {
       callbackCount = 0
       clipped = 0
       try checked(AudioDeviceStart(aggregate, io), "开启系统音频")
+      startSpectrum(processor, sampleRate: rate)
       timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
         self?.poll()
       }
@@ -275,6 +280,40 @@ final class AudioEngine {
     clipped = tb_clipped(dsp)
     publish()
   }
+  private func startSpectrum(_ processor: OpaquePointer, sampleRate: Double) {
+    let session = UUID()
+    spectrumSession = session
+    let fftSize = tb_spectrum_fft_size(processor)
+    var frequencies = [Float](repeating: 0, count: Int(TB_SPECTRUM_BINS))
+    var before = frequencies
+    var after = frequencies
+    var lastFrame = Date()
+    var cleared = false
+    let source = DispatchSource.makeTimerSource(queue: analysisQueue)
+    source.schedule(deadline: .now(), repeating: .milliseconds(50), leeway: .milliseconds(5))
+    source.setEventHandler { [weak self] in
+      if tb_read_spectrum(processor, &frequencies, &before, &after) {
+        lastFrame = Date()
+        cleared = false
+        let data: [String: Any] = [
+          "frequencies": frequencies, "before": before, "after": after,
+          "sampleRate": sampleRate, "fftSize": fftSize,
+        ]
+        DispatchQueue.main.async { [weak self] in
+          guard let self, self.spectrumSession == session else { return }
+          self.onSpectrum?(data)
+        }
+      } else if !cleared && Date().timeIntervalSince(lastFrame) > 0.5 {
+        cleared = true
+        DispatchQueue.main.async { [weak self] in
+          guard let self, self.spectrumSession == session else { return }
+          self.onSpectrum?(nil)
+        }
+      }
+    }
+    spectrumTimer = source
+    source.resume()
+  }
   private func installListeners() throws {
     let watch: [(AudioObjectID, AudioObjectPropertySelector)] = [
       (AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice),
@@ -302,6 +341,12 @@ final class AudioEngine {
     publish()
   }
   func stop(message: String = "") {
+    spectrumSession = UUID()
+    spectrumTimer?.cancel()
+    spectrumTimer = nil
+    // Finish the single analysis consumer before freeing its processor.
+    analysisQueue.sync {}
+    onSpectrum?(nil)
     timer?.invalidate()
     timer = nil
     for (id, var addr, block) in listeners {

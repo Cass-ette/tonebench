@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import FrequencyChart from './FrequencyChart';
+import SpectrumPanel from './SpectrumPanel';
 import type { CurveVisibility } from './FrequencyChart';
 import {
   autoFit,
@@ -874,6 +875,11 @@ export default function App() {
                     <span>对数频率 · {sampleRate / 1000} kHz</span>
                   </div>
                 </section>
+
+                <SpectrumPanel
+                  native={systemAudio.native}
+                  phase={audioStatus.phase}
+                />
 
                 <section className="panel eq-panel">
                   <div className="panel-header">
