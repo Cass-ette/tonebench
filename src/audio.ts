@@ -1,4 +1,5 @@
 import { HARMAN_IN_EAR_2019_RAW } from './harmanInEar2019';
+import { uniqueId } from './identity';
 
 export type Point = { frequency: number; db: number };
 export type FilterKind = 'PK' | 'LSC' | 'HSC';
@@ -84,7 +85,7 @@ export function targetAt(frequency: number, target: Target) {
 
 export function newBand(frequency = 1000): Band {
   return {
-    id: crypto.randomUUID(),
+    id: uniqueId(),
     enabled: true,
     kind: 'PK',
     frequency,
@@ -97,10 +98,13 @@ export function initialBands(): Band[] {
   return [60, 150, 400, 1000, 2400, 5500].map((f) => newBand(f));
 }
 
-// Robert Bristow-Johnson audio EQ cookbook biquads, evaluated at 48 kHz.
-// These compute a response prediction; the browser does not process system audio.
-export function coefficients(band: Band): { b: number[]; a: number[] } {
-  const w = (2 * Math.PI * band.frequency) / SAMPLE_RATE;
+// Same RBJ formulas as the native engine, evaluated at the device sample rate.
+export function coefficients(
+  band: Band,
+  sampleRate = SAMPLE_RATE,
+): { b: number[]; a: number[] } {
+  const w =
+    (2 * Math.PI * Math.min(band.frequency, sampleRate * 0.499)) / sampleRate;
   const cos = Math.cos(w);
   const sin = Math.sin(w);
   const A = 10 ** (band.gain / 40);
@@ -143,8 +147,9 @@ export function coefficients(band: Band): { b: number[]; a: number[] } {
 export function responseFromCoefficients(
   filter: ReturnType<typeof coefficients>,
   frequency: number,
+  sampleRate = SAMPLE_RATE,
 ): number {
-  const w = (2 * Math.PI * frequency) / SAMPLE_RATE;
+  const w = (2 * Math.PI * frequency) / sampleRate;
   const squaredMagnitude = (c: number[]) =>
     (c[0] + c[1] * Math.cos(w) + c[2] * Math.cos(2 * w)) ** 2 +
     (c[1] * Math.sin(w) + c[2] * Math.sin(2 * w)) ** 2;
@@ -157,39 +162,73 @@ export function responseFromCoefficients(
   );
 }
 
-export function bandResponse(band: Band, frequency: number): number {
+export function bandResponse(
+  band: Band,
+  frequency: number,
+  sampleRate = SAMPLE_RATE,
+): number {
   return band.enabled
-    ? responseFromCoefficients(coefficients(band), frequency)
+    ? responseFromCoefficients(
+        coefficients(band, sampleRate),
+        frequency,
+        sampleRate,
+      )
     : 0;
 }
 
-export function eqResponse(bands: Band[], frequency: number): number {
-  return bands.reduce((sum, band) => sum + bandResponse(band, frequency), 0);
+export function eqResponse(
+  bands: Band[],
+  frequency: number,
+  sampleRate = SAMPLE_RATE,
+): number {
+  return bands.reduce(
+    (sum, band) => sum + bandResponse(band, frequency, sampleRate),
+    0,
+  );
 }
 
-export function responseCurve(bands: Band[]): Point[] {
-  const filters = bands.filter((b) => b.enabled).map(coefficients);
+export function responseCurve(
+  bands: Band[],
+  sampleRate = SAMPLE_RATE,
+): Point[] {
+  const filters = bands
+    .filter((b) => b.enabled)
+    .map((b) => coefficients(b, sampleRate));
   return FREQUENCIES.map((frequency) => ({
     frequency,
     db: filters.reduce(
-      (sum, filter) => sum + responseFromCoefficients(filter, frequency),
+      (sum, filter) =>
+        sum + responseFromCoefficients(filter, frequency, sampleRate),
       0,
     ),
   }));
 }
 
-export function suggestedPreamp(bands: Band[]): number {
+export function suggestedPreamp(
+  bands: Band[],
+  sampleRate = SAMPLE_RATE,
+): number {
   // Dense sampling also covers high-Q peaks between the displayed chart points.
-  const filters = bands.filter((b) => b.enabled).map(coefficients);
+  const filters = bands
+    .filter((b) => b.enabled)
+    .map((b) => coefficients(b, sampleRate));
   let maximum = 0;
   const samples = [
-    ...Array.from({ length: 1601 }, (_, i) => 20 * 1200 ** (i / 1600)),
-    ...bands.filter((b) => b.enabled).map((b) => b.frequency),
+    ...Array.from(
+      { length: 1601 },
+      (_, i) => 20 * ((sampleRate * 0.499) / 20) ** (i / 1600),
+    ),
+    ...bands
+      .filter((b) => b.enabled)
+      .map((b) => Math.min(b.frequency, sampleRate * 0.499)),
   ];
   for (const f of samples)
     maximum = Math.max(
       maximum,
-      filters.reduce((sum, c) => sum + responseFromCoefficients(c, f), 0),
+      filters.reduce(
+        (sum, c) => sum + responseFromCoefficients(c, f, sampleRate),
+        0,
+      ),
     );
   if (maximum < 1e-7) return 0;
   return -Math.ceil((maximum + 0.5) * 10 - 1e-8) / 10;
@@ -199,6 +238,7 @@ export function deviation(
   measurement: Measurement,
   target: Target,
   bands: Band[] = [],
+  sampleRate = SAMPLE_RATE,
 ): number {
   if (measurement.points.length === 0) return 0;
   const grid = FREQUENCIES.filter(
@@ -211,7 +251,7 @@ export function deviation(
       (sum, f) =>
         sum +
         (interpolate(measurement.points, f) +
-          eqResponse(bands, f) -
+          eqResponse(bands, f, sampleRate) -
           targetAt(f, target)) **
           2,
       0,
@@ -224,6 +264,7 @@ export function autoFit(
   target: Target,
   count: number,
   maxBoost: number,
+  sampleRate = SAMPLE_RATE,
 ): Band[] {
   if (measurement.points.length === 0)
     throw new Error('请先导入耳机实测曲线。');
@@ -246,8 +287,10 @@ export function autoFit(
     for (let index = 0; index < bands.length; index++) {
       const base = total.map((value, j) => value - responses[index][j]);
       const evaluate = (candidate: Band) => {
-        const c = coefficients(candidate);
-        const response = grid.map((f) => responseFromCoefficients(c, f));
+        const c = coefficients(candidate, sampleRate);
+        const response = grid.map((f) =>
+          responseFromCoefficients(c, f, sampleRate),
+        );
         const cost =
           response.reduce(
             (sum, value, j) => sum + (base[j] + value - wanted[j]) ** 2,
@@ -341,7 +384,7 @@ export function parseMeasurement(text: string, filename: string): Measurement {
   )
     throw new Error('数据中有重复频率，请每个频率只保留一个测量值。');
   return {
-    id: crypto.randomUUID(),
+    id: uniqueId(),
     name: filename.replace(/\.(csv|txt|tsv)$/i, ''),
     source: filename,
     note: '用户导入 · 前两列：Hz / dB · 1 kHz 对齐。测量设备与条件请自行核对。',
@@ -366,12 +409,13 @@ export function equalizerApo(
   bands: Band[],
   preamp: number,
   name: string,
+  sampleRate = SAMPLE_RATE,
 ): string {
   return (
     [
       '# ToneBench — Equalizer APO / Peace',
       `# ${name.replace(/[\r\n]/g, ' ')}`,
-      '# Sample rate: 48000 Hz. Prediction only; verify by listening.',
+      `# Response calculated at ${sampleRate} Hz. Verify by listening.`,
       `Preamp: ${preamp.toFixed(1)} dB`,
       ...bands.map(
         (b, i) =>

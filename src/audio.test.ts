@@ -53,6 +53,23 @@ test('shelf filters have the expected DC and Nyquist gains', () => {
   close(bandResponse({ ...peak, kind: 'HSC' }, 24000), 6);
 });
 
+test('response and headroom follow the actual device sample rate', () => {
+  const high = { ...peak, frequency: 12000, q: 3 };
+  for (const rate of [44100, 48000, 96000, 192000]) {
+    close(bandResponse(high, 12000, rate), 6);
+    close(bandResponse({ ...high, kind: 'HSC' }, rate / 2, rate), 6);
+    assert.ok(suggestedPreamp([high], rate) <= -6.5);
+    assert.ok(
+      equalizerApo([high], -6.5, 'device', rate).includes(`${rate} Hz`),
+    );
+  }
+  assert.ok(
+    Math.abs(
+      bandResponse(high, 16000, 44100) - bandResponse(high, 16000, 96000),
+    ) > 0.1,
+  );
+});
+
 test('cascaded response sums in dB and headroom covers the complete filter bank', () => {
   close(eqResponse([peak, { ...peak, id: 'second' }], 1000), 12);
   const preamp = suggestedPreamp([peak, { ...peak, id: 'second' }]);

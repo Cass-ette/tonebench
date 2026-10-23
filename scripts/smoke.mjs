@@ -24,6 +24,13 @@ import fs from 'node:fs/promises';
       waitUntil: 'networkidle',
     });
     assert.equal(await page.locator('.curve').count(), 0);
+    await page.getByText('网页编辑器', { exact: true }).waitFor();
+    assert.equal(
+      await page
+        .getByRole('button', { name: '开启系统 EQ', exact: true })
+        .count(),
+      0,
+    );
     await page
       .getByRole('button', { name: '直接手动调音', exact: true })
       .click();
@@ -113,7 +120,7 @@ import fs from 'node:fs/promises';
     await gain.fill('10');
     await gain.press('Escape');
     assert.equal(await gain.inputValue(), '3.5');
-    await page.getByRole('button', { name: 'EQ 已启用', exact: true }).click();
+    await page.getByRole('button', { name: 'EQ 曲线', exact: true }).click();
     assert.equal(
       await page
         .getByRole('button', { name: 'EQ 已旁路', exact: true })
@@ -286,6 +293,104 @@ import fs from 'node:fs/promises';
     await page.reload({ waitUntil: 'networkidle' });
     await page.screenshot({ path: 'test-results/desktop.png', fullPage: true });
     assert.deepEqual(errors, []);
+    const nativePage = await browser.newPage();
+    await nativePage.addInitScript(() => {
+      window.__TONEBENCH_NATIVE__ = true;
+      window.__nativeMessages = [];
+      window.webkit = {
+        messageHandlers: {
+          tonebench: {
+            postMessage(message) {
+              window.__nativeMessages.push(message);
+              if (message.action === 'ready')
+                setTimeout(
+                  () =>
+                    window.dispatchEvent(
+                      new CustomEvent('tonebench:audio', {
+                        detail: {
+                          phase: 'stopped',
+                          message: '',
+                          outputDevice: 'Test DAC',
+                          sampleRate: 44100,
+                          clipped: 0,
+                        },
+                      }),
+                    ),
+                  0,
+                );
+            },
+          },
+        },
+      };
+    });
+    await nativePage.goto(
+      process.env.TONEBENCH_URL || 'http://127.0.0.1:5173/',
+      { waitUntil: 'networkidle' },
+    );
+    await nativePage
+      .getByRole('button', { name: '直接手动调音', exact: true })
+      .click();
+    await nativePage
+      .getByRole('button', { name: '开启系统 EQ', exact: true })
+      .click();
+    const start = await nativePage.evaluate(() =>
+      window.__nativeMessages.findLast((m) => m.action === 'start'),
+    );
+    assert.equal(start.settings.bands.length, 6);
+    assert.equal(start.settings.autoPreamp, true);
+    await nativePage.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent('tonebench:audio', {
+          detail: {
+            phase: 'running',
+            message: '',
+            outputDevice: 'Test DAC',
+            sampleRate: 44100,
+            clipped: 0,
+          },
+        }),
+      ),
+    );
+    await nativePage.getByText('系统 EQ · 运行中', { exact: true }).waitFor();
+    await nativePage
+      .getByText('对数频率 · 44.1 kHz', { exact: true })
+      .waitFor();
+    await nativePage
+      .getByRole('button', { name: 'EQ 已启用', exact: true })
+      .click();
+    assert.equal(
+      await nativePage.evaluate(
+        () =>
+          window.__nativeMessages.findLast((m) => m.action === 'update')
+            .settings.bypass,
+      ),
+      true,
+    );
+    await nativePage
+      .getByRole('button', { name: '停止系统 EQ', exact: true })
+      .click();
+    assert.equal(
+      await nativePage.evaluate(() => window.__nativeMessages.at(-1).action),
+      'stop',
+    );
+    await nativePage.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent('tonebench:audio', {
+          detail: {
+            phase: 'error',
+            message: '系统音频权限未允许',
+            outputDevice: 'Test DAC',
+            sampleRate: 44100,
+            clipped: 0,
+          },
+        }),
+      ),
+    );
+    await nativePage.getByText('系统音频权限未允许', { exact: true }).waitFor();
+    await nativePage
+      .getByRole('button', { name: '开启系统 EQ', exact: true })
+      .waitFor();
+    await nativePage.close();
     console.log(
       JSON.stringify(
         {
@@ -306,6 +411,7 @@ import fs from 'node:fs/promises';
             'invalid file rejection',
             'gear notes',
             '4 viewport sizes',
+            'native bridge start/update/bypass/stop/error at 44.1 kHz (mocked)',
           ],
           fontInfo,
           errors,

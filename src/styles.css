@@ -2229,3 +2229,46 @@ h1 {
     scroll-behavior: auto !important;
   }
 }
+.audio-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 18px;
+  margin: 0 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #191c20;
+  color: #929ca8;
+}
+.audio-description {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.audio-description strong {
+  color: #d4d9df;
+  font-size: 12px;
+  font-weight: 500;
+}
+.audio-description span {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.audio-running > svg {
+  color: #a7c5df;
+}
+.audio-running {
+  border-color: #344454;
+}
+@media (max-width: 600px) {
+  .audio-strip {
+    gap: 10px;
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+  .audio-strip > .button {
+    margin-left: 28px;
+  }
+}

@@ -7,3 +7,6 @@ test-results/
 *.local
 *.tsbuildinfo
 .DS_Store
+build/
+macos/.build/
+macos/.swiftpm/

@@ -12,6 +12,7 @@ type Props = {
   measurement: Measurement;
   target: Target;
   bands: Band[];
+  sampleRate: number;
   bypass: boolean;
   visible: CurveVisibility;
   selected: string | null;
@@ -39,6 +40,7 @@ export default function FrequencyChart({
   measurement,
   target,
   bands,
+  sampleRate,
   bypass,
   visible,
   selected,
@@ -55,6 +57,7 @@ export default function FrequencyChart({
   const drag = useRef<{ band: Band; startY: number } | null>(null);
   const curve = (read: (f: number) => number, measuredRange = false) =>
     FREQUENCIES.filter((f) => {
+      if (f >= sampleRate / 2) return false;
       if (!measuredRange) return true;
       return (
         measurement.points.length > 0 &&
@@ -79,7 +82,8 @@ export default function FrequencyChart({
   };
   const activeBands = bypass ? [] : bands;
   const measured = (f: number) => interpolate(measurement.points, f);
-  const predicted = (f: number) => measured(f) + eqResponse(activeBands, f);
+  const response = (f: number) => eqResponse(activeBands, f, sampleRate);
+  const predicted = (f: number) => measured(f) + response(f);
   const move = (event: React.PointerEvent<SVGSVGElement>) => {
     const { x, y } = local(event);
     const frequency = 20 * 1000 ** ((x - LEFT) / INNER_W);
@@ -219,10 +223,7 @@ export default function FrequencyChart({
             />
           )}
           {visible.eq && (
-            <path
-              d={curve((f) => eqResponse(activeBands, f))}
-              className="curve eq-curve"
-            />
+            <path d={curve(response)} className="curve eq-curve" />
           )}
           {visible.eq &&
             !bypass &&
@@ -245,7 +246,7 @@ export default function FrequencyChart({
                 >
                   <circle
                     cx={px(band.frequency)}
-                    cy={py(eqResponse(activeBands, band.frequency))}
+                    cy={py(response(band.frequency))}
                     r={band.id === selected ? 10 : 8}
                     fill={band.id === selected ? '#b8c8dc' : '#282d33'}
                     stroke="#a0b0c4"
@@ -253,7 +254,7 @@ export default function FrequencyChart({
                   />
                   <text
                     x={px(band.frequency)}
-                    y={py(eqResponse(activeBands, band.frequency)) + 3.5}
+                    y={py(response(band.frequency)) + 3.5}
                     textAnchor="middle"
                     className={`handle-label ${band.id === selected ? 'selected' : ''}`}
                   >

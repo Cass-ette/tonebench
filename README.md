@@ -2,9 +2,43 @@
 
 A personal workbench for headphone tuning. 个人耳机调音工作台。
 
-React + TypeScript 构建的本地浏览器工具。以频响曲线为中心，完成测量导入、参数 EQ 自动拟合与手调、前后对比、配置保存和导出。
+耳机调音工作台，包含 Swift Mac 应用与 React + TypeScript 编辑界面。以频响曲线为中心，完成测量导入、参数 EQ 自动拟合与手调、前后对比、配置保存和导出。Mac 应用通过 Core Audio Tap 实时处理当前输出设备的系统声音，继续使用原来的音乐播放器即可。
 
-## 运行
+## Mac 应用
+
+需要 macOS 14.2+、Xcode 命令行工具和 Node.js 22.12+（或 20.19+）。
+
+```sh
+npm ci
+npm run mac:build
+open build/ToneBench.app
+```
+
+选择“直接手动调音”或导入实测曲线，再点击“开启系统 EQ”。首次捕获时需在 macOS 系统提示中允许录制系统音频；拒绝后请在系统设置的“隐私与安全性”中检查权限。音频仅在本机内存中处理，不保存、不上传。
+
+- 其他应用 → 当前输出设备的 Core Audio Tap → EQ → 当前输出设备。不更改系统默认输出设备，不安装虚拟音频驱动。
+- 最多 12 段参数 EQ、前级衰减、实时参数更新。切换参数时以约 20 ms 交叉淡化减少突变。
+- 旁路关闭滤波器但保留前级衰减，便于比较；停止系统 EQ 后恢复直出，音量可能与带前级衰减时不同。
+- 首版支持单一双声道、32 位浮点、32–192 kHz 输出流。多通道设备、独占输出、受保护内容和蓝牙等不同设备的兼容性仍需逐项验证。
+- 设备或格式变更、休眠、退出及处理异常时停止 EQ。失败时显示原因，不自动重开。
+- 浏览器和 Mac 应用的本地记录独立，可用 JSON 导出与导入迁移预设。
+
+构建产物在 `build/ToneBench.app`，仅作本机 ad-hoc 签名，**尚未使用 Developer ID 签名或经 Apple 公证**。采用 Apple 官方 API 不等于应用获得 Apple 认证。API 参考：[Capturing system audio with Core Audio taps](https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps)。
+
+```sh
+npm run mac:test # 原生 DSP 与 HAL 缓冲区测试，不捕获系统音频
+```
+
+若同步目录附加的 Finder 属性导致 Swift 测试包签名失败，可将构建目录移到本机临时目录：
+
+```sh
+swift test --package-path macos --scratch-path /private/tmp/tonebench-swift-build
+TONEBENCH_SWIFT_BUILD=/private/tmp/tonebench-swift-build npm run mac:build
+```
+
+开发诊断：`open -n build/ToneBench.app --args --smoke-test` 检查原生界面；`--audio-check` 会请求系统音频权限，以零增益旁路短暂检查回调，然后自动退出。结果写入 `test-results/`，不包含音频。回调正常不等于所有播放器或设备均已通过听测。
+
+## 网页编辑器
 
 需要 Node.js 22.12+（或 20.19+）。
 
@@ -30,7 +64,7 @@ npm run preview # 在本地查看已构建的 dist/
 - 内置 Harman In-Ear 2019 目标曲线，可导入其他目标曲线并保存在本机。
 - 4 / 6 / 8 / 10 段自动拟合，拟合上限 8 kHz，单段提升限制可选 0 / 3 / 6 dB。
 - 峰值、低架和高架滤波器，最多 12 段；数值编辑、独立开关和图上控制点拖动。
-- 预测旁路、拟合偏差对比、自动前级余量或手动前级增益。
+- Mac 系统 EQ 与旁路；网页预测旁路；拟合偏差对比、自动前级余量或手动前级增益。
 - 草稿、测量列表、个人预设、耳机与 DAC / 耳放笔记保存在当前浏览器。
 - Equalizer APO / Peace 文本导出；包含测量的 JSON 预设可导出并重新导入。
 - 桌面、平板与手机布局；系统中文黑体与等宽数字。
@@ -55,21 +89,21 @@ frequency,db
 
 ## 计算与适用范围
 
-EQ 响应采用 Robert Bristow-Johnson Audio EQ Cookbook 的双二阶滤波器公式，采样率为 48 kHz。各段响应在 dB 域叠加，预测曲线为原始测量加上 EQ 响应；前级整体衰减另行显示，未加到图中。
+EQ 响应采用 Robert Bristow-Johnson Audio EQ Cookbook 的双二阶滤波器公式。Mac 应用使用设备实际采样率，网页默认 48 kHz；图表、自动拟合和原生引擎使用相同公式。各段响应在 dB 域叠加，预测曲线为原始测量加上 EQ 响应；前级整体衰减另行显示，未加到图中。
 
-自动拟合采用有界坐标搜索，在测量实际覆盖的 20 Hz–8 kHz 范围内，减少等对数频率加权的均方误差，并对过大增益和 Q 值作轻度惩罚。自动拟合的单段增益限制为 −12 dB 至选定提升值，Q 为 0.35–4；手动编辑允许更宽的范围。自动前级在 20 Hz–24 kHz 计算滤波器组最大提升，并额外保留 0.5 dB 余量。
+自动拟合采用有界坐标搜索，在测量实际覆盖的 20 Hz–8 kHz 范围内，减少等对数频率加权的均方误差，并对过大增益和 Q 值作轻度惩罚。自动拟合的单段增益限制为 −12 dB 至选定提升值，Q 为 0.35–4；手动编辑允许更宽的范围。自动前级在 20 Hz 至略低于奈奎斯特频率的范围计算滤波器组最大提升，并额外保留 0.5 dB 余量。输出超出数字满刻度会被限幅并显示削波提示；自动余量不保证任意信号的瞬态峰值永不削波。
 
 内置目标为 Harman In-Ear 2019，不代表唯一正确或适合所有人的声音。曲线文件来自 [AutoEq](https://github.com/jaakkopasanen/AutoEq)，固定版本 `7ae0f56d53074872b028649617a22bbb4232feb7`，许可见 [`LICENSES/AutoEq-MIT.txt`](LICENSES/AutoEq-MIT.txt)。AutoEq 目标文件：[Harman in-ear 2019.csv](https://github.com/jaakkopasanen/AutoEq/blob/7ae0f56d53074872b028649617a22bbb4232feb7/targets/Harman%20in-ear%202019.csv)。
 
 自动拟合需要耳机实测曲线和目标曲线；耳机型号名称不是必需条件。没有实测曲线时仍可手动编辑、保存和导出 EQ，但不会显示耳机响应预测，也无法自动拟合。公开数据库中的数据可按来源文件名导入。RMS 偏差只表示曲线距离，不是听感评分。
 
-当前工具计算和编辑调音配置，**尚不播放音频、处理系统声音或提供音频 A/B 试听**。旁路仅影响图表预测，导出仍保留已启用的滤波器。APO 配置需要在相应音频软件中应用；不同处理器或采样率可能产生响应差异。
+Mac 应用开启系统 EQ 后，参数和旁路会应用到当前输出设备的音频。网页只编辑和预测，不处理其他应用的声音。导出保留已启用的滤波器；APO 配置需要在相应音频软件中应用。当前未内置音乐播放器或曲库。
 
 ## 数据与后续方向
 
 测量、草稿、预设和器材笔记使用浏览器 `localStorage`，不上传到服务器；更换浏览器或清理站点数据会丢失记录，请用 JSON 导出备份。导入测量列表最多保留最近 20 条。
 
-后续方向包括更多带明确来源和使用授权的测量、左右声道对比、音频试听，以及耳机与 DAC / 耳放的规格匹配。
+后续方向包括更多带明确来源和使用授权的测量、左右声道对比、本地文件试听，以及耳机与 DAC / 耳放的规格匹配。
 
 ## 项目结构
 
@@ -81,4 +115,7 @@ src/FrequencyChart.tsx SVG 频响图与控制点交互
 src/App.tsx           工作台、测量、预设与器材记录
 src/styles.css        石墨灰 / 铂金灰 / 冰蓝界面及响应式布局
 scripts/smoke.mjs     桌面、手机与工作流浏览器检查
+src/native.ts         Web ↔ Swift 音频状态与参数桥接
+macos/                Swift / AppKit 应用与实时 C DSP
+scripts/build-mac.sh  本机 Mac 应用构建与签名
 ```

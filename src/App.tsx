@@ -43,6 +43,8 @@ import {
   isTarget,
 } from './audio';
 import type { Band, Measurement, Preset, Target } from './audio';
+import { isNative, nativeMessage, useSystemAudio } from './native';
+import { uniqueId } from './identity';
 
 type Modal = 'import' | 'export' | 'save' | 'presets' | 'help' | 'gear' | null;
 type Session = {
@@ -96,6 +98,7 @@ function readSession(): Session {
   };
 }
 function download(filename: string, contents: string, type = 'text/plain') {
+  if (nativeMessage({ action: 'export', name: filename, contents })) return;
   const url = URL.createObjectURL(new Blob([contents], { type }));
   const a = document.createElement('a');
   a.href = url;
@@ -232,14 +235,20 @@ export default function App() {
   const modalPanel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const fitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const suggested = useMemo(() => suggestedPreamp(bands), [bands]);
+  const systemAudio = useSystemAudio({ bands, preamp, bypass, autoPreamp });
+  const { status: audioStatus } = systemAudio;
+  const sampleRate = audioStatus.sampleRate;
+  const suggested = useMemo(
+    () => suggestedPreamp(bands, sampleRate),
+    [bands, sampleRate],
+  );
   const beforeError = useMemo(
     () => deviation(measurement, target),
     [measurement, target],
   );
   const afterError = useMemo(
-    () => deviation(measurement, target, bypass ? [] : bands),
-    [measurement, target, bands, bypass],
+    () => deviation(measurement, target, bypass ? [] : bands, sampleRate),
+    [measurement, target, bands, bypass, sampleRate],
   );
   const effectivePreamp = autoPreamp ? suggested : preamp;
   const safePreset: Preset = {
@@ -497,7 +506,13 @@ export default function App() {
     setFitting(true);
     fitTimer.current = setTimeout(() => {
       try {
-        const fitted = autoFit(measurement, target, fitCount, maxBoost);
+        const fitted = autoFit(
+          measurement,
+          target,
+          fitCount,
+          maxBoost,
+          sampleRate,
+        );
         setBands(fitted);
         setSelected(fitted[0]?.id ?? null);
         setAutoPreamp(true);
@@ -516,6 +531,7 @@ export default function App() {
           bands,
           effectivePreamp,
           hasMeasurement ? measurement.name : '手动调音',
+          sampleRate,
         )
       : JSON.stringify(safePreset, null, 2);
   const title = {
@@ -611,7 +627,7 @@ export default function App() {
           </button>
           <div className="version-line">
             <span className="status-led" />
-            本地工作区<span>v0.1</span>
+            本地工作区<span>v0.2</span>
           </div>
         </div>
       </aside>
@@ -741,6 +757,60 @@ export default function App() {
             </button>
           </section>
 
+          <section
+            className={`audio-strip ${audioStatus.phase === 'running' ? 'audio-running' : ''}`}
+            aria-label="系统音频"
+          >
+            <AudioLines size={18} strokeWidth={1.5} />
+            <div className="audio-description">
+              <strong>
+                {systemAudio.native
+                  ? audioStatus.phase === 'running'
+                    ? bypass
+                      ? '系统 EQ · 旁路'
+                      : '系统 EQ · 运行中'
+                    : audioStatus.phase === 'starting'
+                      ? '正在开启系统 EQ'
+                      : '系统 EQ · 未开启'
+                  : '网页编辑器'}
+              </strong>
+              <span>
+                {systemAudio.native
+                  ? audioStatus.message ||
+                    (audioStatus.phase === 'running'
+                      ? `${audioStatus.outputDevice} · ${sampleRate / 1000} kHz · 旁路保留前级电平`
+                      : `${audioStatus.outputDevice || '当前输出设备'} · 开启后实时处理其他应用的声音`)
+                  : '在 Mac 应用中开启系统 EQ，网页用于编辑和导出。'}
+              </span>
+              {audioStatus.clipped > 0 && (
+                <span className="warning-text">
+                  检测到削波，请降低前级或开启自动余量。
+                </span>
+              )}
+            </div>
+            {systemAudio.native && (
+              <button
+                className="button"
+                disabled={
+                  audioStatus.phase !== 'running' &&
+                  audioStatus.phase !== 'starting' &&
+                  !hasActiveWorkbench
+                }
+                onClick={() =>
+                  audioStatus.phase === 'running' ||
+                  audioStatus.phase === 'starting'
+                    ? systemAudio.stop()
+                    : systemAudio.start()
+                }
+              >
+                {audioStatus.phase === 'running' ||
+                audioStatus.phase === 'starting'
+                  ? '停止系统 EQ'
+                  : '开启系统 EQ'}
+              </button>
+            )}
+          </section>
+
           {hasActiveWorkbench ? (
             <div className="workbench-grid">
               <div className="main-column">
@@ -757,7 +827,11 @@ export default function App() {
                       onClick={() => setBypass(!bypass)}
                     >
                       <span className="bypass-light" />
-                      {bypass ? 'EQ 已旁路' : 'EQ 已启用'}
+                      {bypass
+                        ? 'EQ 已旁路'
+                        : audioStatus.phase === 'running'
+                          ? 'EQ 已启用'
+                          : 'EQ 曲线'}
                     </button>
                   </div>
                   <div className="chart-legend" aria-label="曲线显示">
@@ -783,6 +857,7 @@ export default function App() {
                     measurement={measurement}
                     target={target}
                     bands={bands}
+                    sampleRate={sampleRate}
                     bypass={bypass}
                     visible={visible}
                     selected={selected}
@@ -796,7 +871,7 @@ export default function App() {
                         ? 'EQ 后曲线为计算预测，未包含前级整体衰减'
                         : '无实测响应；图中仅显示目标与 EQ 增益'}
                     </span>
-                    <span>对数频率 · 48 kHz</span>
+                    <span>对数频率 · {sampleRate / 1000} kHz</span>
                   </div>
                 </section>
 
@@ -1386,7 +1461,7 @@ export default function App() {
                   if (!name) return;
                   const preset = {
                     ...safePreset,
-                    id: crypto.randomUUID(),
+                    id: uniqueId(),
                     name,
                   };
                   if (persistPresets([preset, ...presets])) {
@@ -1446,7 +1521,7 @@ export default function App() {
                 </div>
                 <p className="modal-description">
                   {exportType === 'apo'
-                    ? '导入 Equalizer APO / Peace 应用到实际音频。当前图表按 48 kHz 计算，其他采样率下高频响应会略有差别。'
+                    ? `可导入 Equalizer APO / Peace。当前图表按 ${sampleRate / 1000} kHz 计算。`
                     : '包含目标曲线与调音参数，可再次导入 ToneBench。'}
                 </p>
                 {bypass && (
@@ -1460,7 +1535,13 @@ export default function App() {
                     className="button"
                     onClick={async () => {
                       try {
-                        await navigator.clipboard.writeText(exportText);
+                        if (
+                          !nativeMessage({
+                            action: 'copy',
+                            contents: exportText,
+                          })
+                        )
+                          await navigator.clipboard.writeText(exportText);
                         setToast('配置已复制');
                       } catch {
                         setToast('复制不可用，请下载配置文件。');
@@ -1550,7 +1631,7 @@ export default function App() {
                     if (!gearName.trim()) return;
                     const next = [
                       {
-                        id: crypto.randomUUID(),
+                        id: uniqueId(),
                         name: gearName.trim(),
                         type: gearType,
                         note: gearNote.trim(),
@@ -1645,7 +1726,7 @@ export default function App() {
                   <AudioLines size={25} strokeWidth={1.2} />
                   <div>
                     <strong>ToneBench</strong>
-                    <span>个人耳机调音工作台 · v0.1</span>
+                    <span>个人耳机调音工作台 · v0.2</span>
                   </div>
                 </div>
                 <h3>测量与目标</h3>
@@ -1658,8 +1739,9 @@ export default function App() {
                 <h3>曲线与拟合</h3>
                 <p>
                   导入测量在 1 kHz 对齐到 0 dB，点间按对数频率插值。均衡器用 RBJ
-                  双二阶滤波器、48 kHz 采样率计算预测响应。自动拟合范围为 20
-                  Hz–8 kHz，每段 Q 限制为 0.35–4；不主动修正高频窄峰。
+                  双二阶滤波器、当前 {sampleRate / 1000} kHz
+                  采样率计算预测响应。自动拟合范围为 20 Hz–8 kHz，每段 Q 限制为
+                  0.35–4；不主动修正高频窄峰。
                 </p>
                 <p>
                   原始曲线与目标应来自相容的测量条件。不同夹具、佩戴与密封会影响结果；图表和
@@ -1668,8 +1750,10 @@ export default function App() {
                 <h3>编辑与导出</h3>
                 <p>
                   输入参数后按 Enter 或移开焦点生效。打开“EQ
-                  增益”后可拖动图上控制点。旁路只切换图表预测，不播放或处理系统音频。导出
-                  Equalizer APO 配置后，在对应软件内应用。
+                  增益”后可拖动图上控制点。
+                  {isNative()
+                    ? '开启系统 EQ 后，参数与旁路会实时应用到当前输出设备的声音。旁路保留前级衰减；停止系统 EQ 后恢复直出。'
+                    : '网页中的旁路只切换图表。Mac 应用可开启系统 EQ；也可导出 Equalizer APO 配置供其他软件使用。'}
                 </p>
                 <h3>本地保存</h3>
                 <p>
