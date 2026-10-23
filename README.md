@@ -1,22 +1,81 @@
 # ToneBench
 
-A personal workbench for headphone tuning.
+A personal workbench for headphone tuning. 个人耳机调音工作台。
 
-ToneBench is a planned desktop tool for exploring headphone frequency response, shaping EQ, and keeping track of listening preferences and audio gear.
+React + TypeScript 构建的本地浏览器工具。以频响曲线为中心，完成测量导入、参数 EQ 自动拟合与手调、前后对比、配置保存和导出。
 
-## Product direction
+## 运行
 
-The main workspace will compare three curves: a headphone's measured response, a selected target curve, and the predicted response after EQ. Users should be able to start either from an available headphone measurement and generate a first EQ automatically, or import their own measurement and tune from there. Both paths lead to the same editable EQ and curve comparison view.
+需要 Node.js 22.12+（或 20.19+）。
 
-## Initial workflow
+```sh
+npm ci
+npm run dev
+```
 
-1. Choose a headphone with an available measurement, or import a measurement.
-2. Select a target curve and generate or edit parametric EQ.
-3. Compare the measured, target, and EQ-predicted curves.
-4. Save a personal tuning and export its EQ settings.
+打开终端显示的本地地址，默认是 `http://127.0.0.1:5173/`。
 
-Later versions may add listening A/B notes and DAC/amplifier equipment records. Measurement source and conditions should remain visible because fit, seal, and measurement rigs affect frequency-response results.
+```sh
+npm run check   # 音频计算与数据解析测试 + TypeScript 检查 + 生产构建
+npm run format:check # Prettier 格式检查
+npx playwright install chromium # 首次浏览器测试前安装
+npm run smoke # 在另一个终端启动 dev 服务后运行 Playwright 交互检查
+npm run preview # 在本地查看已构建的 dist/
+```
 
-## Status
+## 当前功能
 
-Concept stage. The repository currently captures the agreed product direction; implementation choices are still open.
+- 原始测量、目标、EQ 后预测与 EQ 增益曲线叠加；20 Hz–20 kHz 对数频率轴。
+- 三组明确标注的**合成演示测量**，以及 CSV / TXT / TSV 频响导入。
+- 三条示意目标：均衡参考、温暖聆听、人声清晰。
+- 4 / 6 / 8 / 10 段自动拟合，拟合上限 8 kHz，单段提升限制可选 0 / 3 / 6 dB。
+- 峰值、低架和高架滤波器，最多 12 段；数值编辑、独立开关和图上控制点拖动。
+- 预测旁路、拟合偏差对比、自动前级余量或手动前级增益。
+- 草稿、测量列表、个人预设、耳机与 DAC / 耳放笔记保存在当前浏览器。
+- Equalizer APO / Peace 文本导出；包含测量的 JSON 预设可导出并重新导入。
+- 桌面、平板与手机布局；系统中文黑体与等宽数字。
+
+## 导入格式
+
+前两列为频率（Hz）与声压（dB），支持逗号、制表符、空格或分号分隔，可带标题及 `#`、`*`、`//` 注释。至少需要 8 个有效测量点，范围覆盖 100–8,000 Hz；仅保留 20–20,000 Hz 内的数据。文件不得超过 1 MB。
+
+```csv
+frequency,db
+20,73.2
+50,74.0
+100,75.1
+300,76.0
+1000,78.2
+3000,84.1
+8000,80.5
+20000,70.2
+```
+
+数据按频率排序、在对数频率轴上插值，并将 1 kHz 对齐到 0 dB。重复频率与无效数值会报错。界面中可下载完整演示 CSV。左右声道目前应分别导入。
+
+## 计算与适用范围
+
+EQ 响应采用 Robert Bristow-Johnson Audio EQ Cookbook 的双二阶滤波器公式，采样率为 48 kHz。各段响应在 dB 域叠加，预测曲线为原始测量加上 EQ 响应；前级整体衰减另行显示，未加到图中。
+
+自动拟合采用有界坐标搜索，在测量实际覆盖的 20 Hz–8 kHz 范围内，减少等对数频率加权的均方误差，并对过大增益和 Q 值作轻度惩罚。自动拟合的单段增益限制为 −12 dB 至选定提升值，Q 为 0.35–4；手动编辑允许更宽的范围。自动前级在 20 Hz–24 kHz 计算滤波器组最大提升，并额外保留 0.5 dB 余量。
+
+**内置演示不是实际耳机数据库，示意目标不是已验证的标准目标。** 不同测量夹具、佩戴与密封条件会影响结果，应使用相容的测量与目标。RMS 偏差只表示曲线距离，不是听感评分。
+
+当前工具计算和编辑调音配置，**尚不播放音频、处理系统声音或提供音频 A/B 试听**。旁路仅影响图表预测，导出仍保留已启用的滤波器。APO 配置需要在相应音频软件中应用；不同处理器或采样率可能产生响应差异。
+
+## 数据与后续方向
+
+测量、草稿、预设和器材笔记使用浏览器 `localStorage`，不上传到服务器；更换浏览器或清理站点数据会丢失记录，请用 JSON 导出备份。导入测量列表最多保留最近 20 条。
+
+后续接入带来源和使用授权的真实耳机测量、相容的标准目标、自定义目标导入、左右声道对比、音频试听，以及耳机与 DAC / 耳放的规格匹配。真实测量库接入后，继续沿用同一套曲线与参数编辑器。
+
+## 项目结构
+
+```text
+src/audio.ts           曲线、RBJ 滤波器、拟合、导入与导出
+src/audio.test.ts      核心计算和数据校验测试
+src/FrequencyChart.tsx SVG 频响图与控制点交互
+src/App.tsx           工作台、测量、预设与器材记录
+src/styles.css        石墨灰 / 铂金灰 / 冰蓝界面及响应式布局
+scripts/smoke.mjs     桌面、手机与工作流浏览器检查
+```
