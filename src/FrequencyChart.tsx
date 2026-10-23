@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import type { Band, Measurement, TargetId } from './audio';
+import type { Band, Measurement, Target } from './audio';
 import { clamp, eqResponse, FREQUENCIES, interpolate, targetAt } from './audio';
 
 export type CurveVisibility = {
@@ -10,7 +10,7 @@ export type CurveVisibility = {
 };
 type Props = {
   measurement: Measurement;
-  target: TargetId;
+  target: Target;
   bands: Band[];
   bypass: boolean;
   visible: CurveVisibility;
@@ -53,12 +53,15 @@ export default function FrequencyChart({
     y: number;
   } | null>(null);
   const drag = useRef<{ band: Band; startY: number } | null>(null);
-  const curve = (read: (f: number) => number) =>
-    FREQUENCIES.filter(
-      (f) =>
+  const curve = (read: (f: number) => number, measuredRange = false) =>
+    FREQUENCIES.filter((f) => {
+      if (!measuredRange) return true;
+      return (
+        measurement.points.length > 0 &&
         f >= measurement.points[0].frequency &&
-        f <= measurement.points.at(-1)!.frequency,
-    )
+        f <= measurement.points.at(-1)!.frequency
+      );
+    })
       .map(
         (f, i) =>
           `${i ? 'L' : 'M'}${px(f).toFixed(2)},${py(read(f)).toFixed(2)}`,
@@ -102,6 +105,7 @@ export default function FrequencyChart({
   const tooltipLeft = hover ? clamp((hover.x / W) * 100 + 2, 8, 76) : 0;
   const hoverHasData =
     hover &&
+    measurement.points.length > 0 &&
     hover.frequency >= measurement.points[0].frequency &&
     hover.frequency <= measurement.points.at(-1)!.frequency;
   return (
@@ -111,7 +115,11 @@ export default function FrequencyChart({
         ref={svg}
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label="耳机原始频响、目标与 EQ 后预测曲线。启用 EQ 曲线后可拖动滤波器控制点。"
+        aria-label={
+          measurement.points.length
+            ? '耳机原始频响、目标与 EQ 后预测曲线。启用 EQ 曲线后可拖动滤波器控制点。'
+            : '目标曲线与 EQ 增益。启用 EQ 曲线后可拖动滤波器控制点。'
+        }
         onPointerMove={move}
         onPointerLeave={() => {
           if (!drag.current) setHover(null);
@@ -201,11 +209,14 @@ export default function FrequencyChart({
               className="curve target-curve"
             />
           )}
-          {visible.measured && (
-            <path d={curve(measured)} className="curve measured-curve" />
+          {measurement.points.length > 0 && visible.measured && (
+            <path d={curve(measured, true)} className="curve measured-curve" />
           )}
-          {visible.predicted && (
-            <path d={curve(predicted)} className="curve predicted-curve" />
+          {measurement.points.length > 0 && visible.predicted && (
+            <path
+              d={curve(predicted, true)}
+              className="curve predicted-curve"
+            />
           )}
           {visible.eq && (
             <path
@@ -280,7 +291,7 @@ export default function FrequencyChart({
           style={{ left: `${tooltipLeft}%`, top: 48 }}
         >
           <strong>{Math.round(hover.frequency).toLocaleString()} Hz</strong>
-          {visible.measured && (
+          {measurement.points.length > 0 && visible.measured && (
             <span>
               <i className="dot measured" />
               原始{' '}
@@ -297,7 +308,7 @@ export default function FrequencyChart({
               目标 <b>{targetAt(hover.frequency, target).toFixed(1)} dB</b>
             </span>
           )}
-          {visible.predicted && (
+          {measurement.points.length > 0 && visible.predicted && (
             <span>
               <i className="dot predicted" />
               预测{' '}

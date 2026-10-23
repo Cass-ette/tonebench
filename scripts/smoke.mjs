@@ -23,6 +23,73 @@ import fs from 'node:fs/promises';
     await page.goto(process.env.TONEBENCH_URL || 'http://127.0.0.1:5173/', {
       waitUntil: 'networkidle',
     });
+    assert.equal(await page.locator('.curve').count(), 0);
+    await page
+      .getByRole('button', { name: '直接手动调音', exact: true })
+      .click();
+    assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
+    assert.equal(await page.locator('.curve').count(), 2);
+    assert.equal(
+      await page
+        .getByRole('button', { name: '自动生成 EQ', exact: true })
+        .isDisabled(),
+      true,
+    );
+    const manualPath = await page.locator('.eq-curve').getAttribute('d');
+    const manualGain = page.getByRole('spinbutton', {
+      name: '滤波器 1 增益',
+      exact: true,
+    });
+    await manualGain.fill('3.5');
+    await manualGain.press('Enter');
+    assert.notEqual(
+      await page.locator('.eq-curve').getAttribute('d'),
+      manualPath,
+    );
+    await page.getByRole('button', { name: '导出 EQ', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'ToneBench JSON', exact: true })
+      .click();
+    assert.equal(
+      JSON.parse(await page.locator('.export-preview').innerText()).measurement,
+      null,
+    );
+    await page.getByRole('button', { name: '关闭对话框', exact: true }).click();
+    await page.getByRole('button', { name: '保存预设', exact: true }).click();
+    await page.getByRole('textbox', { name: '预设名称' }).fill('手动调音预设');
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: '保存预设', exact: true })
+      .click();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: '手动调音', exact: true }).waitFor();
+    assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
+    await page.getByRole('button', { name: /我的预设/ }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /手动调音预设/ })
+      .first()
+      .click();
+    await page.getByRole('button', { name: '手动调音', exact: true }).waitFor();
+    assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
+    await page
+      .locator('.heading-actions')
+      .getByRole('button', {
+        name: '导入实测曲线',
+        exact: true,
+      })
+      .click();
+    const measurementCsv =
+      'frequency,db\n' +
+      [20, 40, 100, 500, 1000, 2000, 8000, 20000]
+        .map((f, i) => `${f},${80 + Math.sin(i) * 3}`)
+        .join('\n');
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'response.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(measurementCsv),
+    });
+    await page.getByRole('button', { name: '实测曲线', exact: true }).waitFor();
     assert.equal(await page.locator('.curve').count(), 3);
     assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
     await page.screenshot({ path: 'test-results/desktop.png', fullPage: true });
@@ -90,7 +157,36 @@ import fs from 'node:fs/promises';
       .getByRole('button', { name: /UI 验证预设/ })
       .first()
       .click();
-    await page.getByRole('button', { name: '导入测量', exact: true }).click();
+    await page
+      .getByRole('button', { name: '导入目标曲线', exact: true })
+      .click();
+    const targetCsv =
+      'frequency,db\n' +
+      [20, 40, 100, 500, 1000, 2000, 8000, 20000]
+        .map((f, i) => `${f},${82 + Math.cos(i) * 2}`)
+        .join('\n');
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'reference-target.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(targetCsv),
+    });
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#target-select option:checked')?.textContent ===
+        'reference-target',
+    );
+    assert.equal(
+      await page.locator('#target-select option:checked').innerText(),
+      'reference-target',
+    );
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(
+      await page.locator('#target-select option:checked').innerText(),
+      'reference-target',
+    );
+    await page
+      .getByRole('button', { name: '导入实测曲线', exact: true })
+      .click();
     const csv =
       'frequency,db\n' +
       [20, 40, 100, 500, 1000, 2000, 8000, 20000]
@@ -101,9 +197,13 @@ import fs from 'node:fs/promises';
       mimeType: 'text/csv',
       buffer: Buffer.from(csv),
     });
-    await page.getByRole('button', { name: '用户测量', exact: true }).waitFor();
+    await page.getByRole('button', { name: '实测曲线', exact: true }).waitFor();
     assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
-    await page.locator('#measurement-select').selectOption('demo-open');
+    const baselineOption = await page
+      .locator('#measurement-select option')
+      .filter({ hasText: 'response' })
+      .getAttribute('value');
+    await page.locator('#measurement-select').selectOption(baselineOption);
     const customOption = await page
       .locator('#measurement-select option')
       .filter({ hasText: 'flat-test' })
@@ -136,7 +236,9 @@ import fs from 'node:fs/promises';
     );
     assert.equal(exported.measurement.name, 'flat-test');
     await page.getByRole('button', { name: '关闭对话框', exact: true }).click();
-    await page.getByRole('button', { name: '导入测量', exact: true }).click();
+    await page
+      .getByRole('button', { name: '导入实测曲线', exact: true })
+      .click();
     await page.locator('input[type=file]').setInputFiles({
       name: 'broken.json',
       mimeType: 'application/json',
@@ -149,7 +251,7 @@ import fs from 'node:fs/promises';
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify(exported)),
     });
-    await page.getByRole('button', { name: '用户测量', exact: true }).waitFor();
+    await page.getByRole('button', { name: '实测曲线', exact: true }).waitFor();
     await page.getByRole('button', { name: '器材档案', exact: true }).click();
     await page
       .getByRole('textbox', { name: '器材名称', exact: true })
@@ -190,12 +292,14 @@ import fs from 'node:fs/promises';
           status: 'PASS',
           checks: [
             'render',
+            'manual tuning without measurement',
             'parameter edit',
             'escape discards input',
             'bypass',
             'graph drag',
             'save and reload',
-            'CSV import and switching',
+            'measurement import and switching',
+            'target import and persistence',
             'automatic EQ',
             'APO download',
             'JSON round trip',

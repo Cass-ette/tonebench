@@ -30,7 +30,6 @@ import type { CurveVisibility } from './FrequencyChart';
 import {
   autoFit,
   clamp,
-  DEMOS,
   deviation,
   equalizerApo,
   initialBands,
@@ -38,22 +37,34 @@ import {
   isPreset,
   newBand,
   parseMeasurement,
+  parseTarget,
   suggestedPreamp,
   TARGETS,
+  isTarget,
 } from './audio';
-import type { Band, Measurement, Preset, TargetId } from './audio';
+import type { Band, Measurement, Preset, Target } from './audio';
 
 type Modal = 'import' | 'export' | 'save' | 'presets' | 'help' | 'gear' | null;
 type Session = {
   measurement: Measurement;
-  target: TargetId;
+  target: Target;
   bands: Band[];
   preamp: number;
+  manualMode: boolean;
 };
 type Gear = { id: string; name: string; type: string; note: string };
+type ImportKind = 'measurement' | 'target';
 const PRESETS_KEY = 'tonebench.presets.v1';
 const SESSION_KEY = 'tonebench.session.v1';
 const GEAR_KEY = 'tonebench.gear.v1';
+const EMPTY_MEASUREMENT: Measurement = {
+  id: 'no-measurement',
+  name: '尚未导入测量',
+  source: '等待实测数据',
+  note: '尚未载入耳机实测频响。',
+  demo: false,
+  points: [],
+};
 function readStorage<T>(key: string, fallback: T): T {
   try {
     return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback;
@@ -67,13 +78,21 @@ function readPresets(): Preset[] {
 }
 function readSession(): Session {
   const data = readStorage<unknown>(SESSION_KEY, null);
-  if (isPreset(data)) return data;
-  const bands = autoFit(DEMOS[0], 'balanced', 6, 6);
+  if (isPreset(data)) {
+    return {
+      measurement: data.measurement ?? EMPTY_MEASUREMENT,
+      target: data.target,
+      bands: data.bands,
+      preamp: data.preamp,
+      manualMode: data.measurement === null,
+    };
+  }
   return {
-    measurement: DEMOS[0],
-    target: 'balanced',
-    bands,
-    preamp: suggestedPreamp(bands),
+    measurement: EMPTY_MEASUREMENT,
+    target: TARGETS[0],
+    bands: [],
+    preamp: 0,
+    manualMode: false,
   };
 }
 function download(filename: string, contents: string, type = 'text/plain') {
@@ -156,17 +175,18 @@ function NumericInput({
 export default function App() {
   const [session] = useState(readSession);
   const [measurement, setMeasurement] = useState(session.measurement);
-  const [target, setTarget] = useState<TargetId>(session.target);
+  const [target, setTarget] = useState<Target>(session.target);
   const [bands, setBands] = useState<Band[]>(session.bands);
   const [preamp, setPreamp] = useState(session.preamp);
+  const [manualMode, setManualMode] = useState(session.manualMode);
   const [autoPreamp, setAutoPreamp] = useState(true);
   const [presets, setPresets] = useState(readPresets);
   const [modal, setModal] = useState<Modal>(null);
   const [visible, setVisible] = useState<CurveVisibility>({
-    measured: true,
+    measured: !session.manualMode,
     target: true,
-    predicted: true,
-    eq: false,
+    predicted: !session.manualMode,
+    eq: session.manualMode,
   });
   const [selected, setSelected] = useState<string | null>(
     session.bands[0]?.id ?? null,
@@ -178,6 +198,7 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [storageProblem, setStorageProblem] = useState(false);
   const [importError, setImportError] = useState('');
+  const [importKind, setImportKind] = useState<ImportKind>('measurement');
   const [presetName, setPresetName] = useState('');
   const [exportType, setExportType] = useState<'apo' | 'json'>('apo');
   const [gears, setGears] = useState<Gear[]>(() => {
@@ -197,11 +218,13 @@ export default function App() {
     () => {
       const data = readStorage<unknown>('tonebench.measurements.v1', []);
       if (!Array.isArray(data)) return [];
-      return data
-        .filter(isMeasurement)
-        .filter((m) => !m.demo && !DEMOS.some((d) => d.id === m.id));
+      return data.filter(isMeasurement).filter((m) => !m.demo);
     },
   );
+  const [customTargets, setCustomTargets] = useState<Target[]>(() => {
+    const data = readStorage<unknown>('tonebench.targets.v1', []);
+    return Array.isArray(data) ? data.filter(isTarget) : [];
+  });
   const [gearName, setGearName] = useState('');
   const [gearType, setGearType] = useState('DAC / 耳放');
   const [gearNote, setGearNote] = useState('');
@@ -221,18 +244,32 @@ export default function App() {
   const effectivePreamp = autoPreamp ? suggested : preamp;
   const safePreset: Preset = {
     id: 'session',
-    name: presetName || measurement.name,
+    name:
+      presetName || (measurement.points.length ? measurement.name : '手动调音'),
     savedAt: new Date().toISOString(),
-    measurement,
+    measurement: measurement.points.length ? measurement : null,
     target,
     bands,
     preamp: effectivePreamp,
   };
-  const fitMinimum = Math.max(20, measurement.points[0].frequency);
-  const fitRange = `${Math.round(fitMinimum)} Hz – 8 kHz`;
+  const hasMeasurement = measurement.points.length > 0;
+  const hasActiveWorkbench = hasMeasurement || manualMode;
+  const availableTargets = [
+    ...TARGETS,
+    ...customTargets.filter(
+      (t) => !TARGETS.some((builtin) => builtin.id === t.id),
+    ),
+  ];
+  const fitMinimum = hasMeasurement
+    ? Math.max(20, measurement.points[0].frequency)
+    : 20;
+  const fitRange = hasMeasurement
+    ? `${Math.round(fitMinimum)} Hz – 8 kHz`
+    : '需实测';
   const availableCustom = [
     ...customMeasurements,
-    ...(!measurement.demo &&
+    ...(hasMeasurement &&
+    !measurement.demo &&
     !customMeasurements.some((m) => m.id === measurement.id)
       ? [measurement]
       : []),
@@ -246,17 +283,22 @@ export default function App() {
           id: 'session',
           name: '工作草稿',
           savedAt: new Date().toISOString(),
-          measurement,
+          measurement: hasMeasurement
+            ? measurement
+            : manualMode
+              ? null
+              : measurement,
           target,
           bands,
           preamp: effectivePreamp,
+          manualMode,
         }),
       );
       setStorageProblem(false);
     } catch {
       setStorageProblem(true);
     }
-  }, [measurement, target, bands, effectivePreamp]);
+  }, [measurement, target, bands, effectivePreamp, manualMode]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(''), 3600);
@@ -324,8 +366,34 @@ export default function App() {
     }
   };
   const load = (preset: Preset) => {
-    setMeasurement(preset.measurement);
+    setMeasurement(preset.measurement ?? EMPTY_MEASUREMENT);
+    setManualMode(preset.measurement === null);
+    setVisible({
+      measured: preset.measurement !== null,
+      target: true,
+      predicted: preset.measurement !== null,
+      eq: preset.measurement === null,
+    });
     setTarget(preset.target);
+    if (!TARGETS.some((t) => t.id === preset.target.id)) {
+      const nextTargets = [
+        preset.target,
+        ...customTargets.filter((t) => t.id !== preset.target.id),
+      ].slice(0, 20);
+      setCustomTargets((current) =>
+        current.some((t) => t.id === preset.target.id)
+          ? current
+          : [preset.target, ...current].slice(0, 20),
+      );
+      try {
+        localStorage.setItem(
+          'tonebench.targets.v1',
+          JSON.stringify(nextTargets),
+        );
+      } catch {
+        setStorageProblem(true);
+      }
+    }
     setBands(preset.bands);
     setPreamp(preset.preamp);
     setAutoPreamp(false);
@@ -336,6 +404,8 @@ export default function App() {
   };
   const changeMeasurement = (next: Measurement) => {
     setMeasurement(next);
+    setManualMode(false);
+    setVisible({ measured: true, target: true, predicted: true, eq: false });
     const reset = initialBands();
     setBands(reset);
     setSelected(reset[0].id);
@@ -361,14 +431,36 @@ export default function App() {
           );
         load({
           ...data,
-          measurement: {
-            ...data.measurement,
-            points: data.measurement.points.map((p) => ({
-              frequency: p.frequency,
-              db: p.db,
-            })),
-          },
+          measurement: data.measurement
+            ? {
+                ...data.measurement,
+                points: data.measurement.points.map((p) => ({
+                  frequency: p.frequency,
+                  db: p.db,
+                })),
+              }
+            : null,
         });
+      } else if (importKind === 'target') {
+        const next = parseTarget(text, selectedFile.name);
+        const targets = [
+          next,
+          ...customTargets.filter((t) => t.id !== next.id),
+        ].slice(0, 20);
+        let stored = true;
+        try {
+          localStorage.setItem('tonebench.targets.v1', JSON.stringify(targets));
+          setCustomTargets(targets);
+        } catch {
+          stored = false;
+        }
+        setTarget(next);
+        setModal(null);
+        setToast(
+          stored
+            ? `已导入目标曲线「${next.name}」`
+            : '目标曲线已载入，但无法保存到列表。',
+        );
       } else {
         const next = parseMeasurement(text, selectedFile.name);
         const measurements = [
@@ -401,6 +493,7 @@ export default function App() {
     }
   };
   const runFit = () => {
+    if (!hasMeasurement) return;
     setFitting(true);
     fitTimer.current = setTimeout(() => {
       try {
@@ -419,16 +512,32 @@ export default function App() {
   };
   const exportText =
     exportType === 'apo'
-      ? equalizerApo(bands, effectivePreamp, measurement.name)
+      ? equalizerApo(
+          bands,
+          effectivePreamp,
+          hasMeasurement ? measurement.name : '手动调音',
+        )
       : JSON.stringify(safePreset, null, 2);
   const title = {
-    import: '导入测量 / 预设',
+    import: '导入频响曲线',
     export: '导出调音配置',
     save: '保存个人预设',
     presets: '我的预设',
     help: '关于这个工作台',
     gear: '器材档案',
   }[modal ?? 'help'];
+  const chartLegendItems: { key: keyof CurveVisibility; label: string }[] =
+    hasMeasurement
+      ? [
+          { key: 'measured', label: '原始测量' },
+          { key: 'target', label: '目标曲线' },
+          { key: 'predicted', label: 'EQ 后预测' },
+          { key: 'eq', label: 'EQ 增益' },
+        ]
+      : [
+          { key: 'target', label: '目标曲线' },
+          { key: 'eq', label: 'EQ 增益' },
+        ];
 
   return (
     <div className="app-shell">
@@ -523,9 +632,10 @@ export default function App() {
             </span>
             <button
               className="button save-button"
+              disabled={!hasActiveWorkbench}
               onClick={() => {
                 setPresetName(
-                  `${measurement.name} · ${TARGETS.find((t) => t.id === target)!.name}`,
+                  `${hasMeasurement ? measurement.name : '手动调音'} · ${target.name}`,
                 );
                 setModal('save');
               }}
@@ -543,21 +653,23 @@ export default function App() {
                 调音工作台
                 <span className="heading-rule" />
               </h1>
-              <p>从频响开始，找到自己的声音。</p>
+              <p>按实测曲线或个人听感调整 EQ。</p>
             </div>
             <div className="heading-actions">
               <button
                 className="button"
                 onClick={() => {
+                  setImportKind('measurement');
                   setImportError('');
                   setModal('import');
                 }}
               >
                 <Upload size={14} />
-                导入测量
+                导入实测曲线
               </button>
               <button
                 className="button button-primary"
+                disabled={!hasActiveWorkbench}
                 onClick={() => {
                   setExportType('apo');
                   setModal('export');
@@ -574,27 +686,25 @@ export default function App() {
               <Headphones size={23} strokeWidth={1.2} />
             </div>
             <div className="measurement-picker">
-              <label htmlFor="measurement-select">当前耳机 / 测量</label>
+              <label htmlFor="measurement-select">当前测量</label>
               <div className="select-wrap">
                 <select
                   id="measurement-select"
-                  value={measurement.id}
+                  value={hasMeasurement ? measurement.id : ''}
                   onChange={(e) => {
-                    const next = [...DEMOS, ...availableCustom].find(
-                      (d) => d.id === e.target.value,
+                    const next = availableCustom.find(
+                      (item) => item.id === e.target.value,
                     );
                     if (next) changeMeasurement(next);
                   }}
                 >
-                  <optgroup label="合成演示 · 非真实耳机">
-                    {DEMOS.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </optgroup>
+                  {!hasMeasurement && (
+                    <option value="" disabled>
+                      尚未导入
+                    </option>
+                  )}
                   {availableCustom.length > 0 && (
-                    <optgroup label="我的测量 · 本地保存">
+                    <optgroup label="我的实测曲线 · 本地保存">
                       {availableCustom.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
@@ -609,11 +719,17 @@ export default function App() {
             <div className="source-divider" />
             <div className="measurement-meta">
               <span>数据来源</span>
-              <strong>{measurement.source}</strong>
+              <strong>
+                {hasMeasurement
+                  ? measurement.source
+                  : manualMode
+                    ? '手动调音 · 无实测曲线'
+                    : '等待实测曲线'}
+              </strong>
             </div>
             <div className="measurement-meta alignment-meta">
               <span>曲线对齐</span>
-              <strong>1 kHz / 0 dB</strong>
+              <strong>{hasMeasurement ? '1 kHz / 0 dB' : '—'}</strong>
             </div>
             <button
               className="source-badge"
@@ -621,419 +737,504 @@ export default function App() {
               onClick={() => setModal('help')}
             >
               <Info size={12} />
-              {measurement.demo ? '演示数据' : '用户测量'}
+              {hasMeasurement ? '实测曲线' : manualMode ? '手动调音' : '未载入'}
             </button>
           </section>
 
-          <div className="workbench-grid">
-            <div className="main-column">
-              <section className="panel response-panel">
-                <div className="panel-header">
-                  <div className="panel-title">
-                    <Activity size={15} />
-                    <h2>频响对比</h2>
-                    <span className="subtle-en">FREQUENCY RESPONSE</span>
-                  </div>
-                  <button
-                    className={`bypass-button ${bypass ? 'engaged' : ''}`}
-                    aria-pressed={bypass}
-                    onClick={() => setBypass(!bypass)}
-                  >
-                    <span className="bypass-light" />
-                    {bypass ? 'EQ 已旁路' : 'EQ 已启用'}
-                  </button>
-                </div>
-                <div className="chart-legend" aria-label="曲线显示">
-                  {(
-                    [
-                      { key: 'measured', label: '原始测量' },
-                      { key: 'target', label: '目标曲线' },
-                      { key: 'predicted', label: 'EQ 后预测' },
-                      { key: 'eq', label: 'EQ 增益' },
-                    ] as const
-                  ).map((item) => (
+          {hasActiveWorkbench ? (
+            <div className="workbench-grid">
+              <div className="main-column">
+                <section className="panel response-panel">
+                  <div className="panel-header">
+                    <div className="panel-title">
+                      <Activity size={15} />
+                      <h2>{hasMeasurement ? '频响对比' : '调音曲线'}</h2>
+                      <span className="subtle-en">FREQUENCY RESPONSE</span>
+                    </div>
                     <button
-                      key={item.key}
-                      className={`legend-item ${!visible[item.key] ? 'muted' : ''}`}
-                      aria-pressed={visible[item.key]}
-                      onClick={() =>
-                        setVisible({
-                          ...visible,
-                          [item.key]: !visible[item.key],
-                        })
-                      }
+                      className={`bypass-button ${bypass ? 'engaged' : ''}`}
+                      aria-pressed={bypass}
+                      onClick={() => setBypass(!bypass)}
                     >
-                      <span className={`line-swatch ${item.key}`} />
-                      {item.label}
+                      <span className="bypass-light" />
+                      {bypass ? 'EQ 已旁路' : 'EQ 已启用'}
                     </button>
-                  ))}
-                  <span className="chart-scale">20 Hz — 20 kHz</span>
-                </div>
-                <FrequencyChart
-                  measurement={measurement}
-                  target={target}
-                  bands={bands}
-                  bypass={bypass}
-                  visible={visible}
-                  selected={selected}
-                  onSelect={setSelected}
-                  onChange={updateBand}
-                />
-                <div className="chart-footer">
-                  <span>
-                    <Info size={12} />
-                    EQ 后曲线为计算预测，未包含前级整体衰减
-                  </span>
-                  <span>对数频率 · 48 kHz</span>
-                </div>
-              </section>
-
-              <section className="panel eq-panel">
-                <div className="panel-header">
-                  <div className="panel-title">
-                    <SlidersHorizontal size={15} />
-                    <h2>参数均衡器</h2>
-                    <span className="small-count">
-                      {bands.filter((b) => b.enabled).length} / {bands.length}{' '}
-                      段
+                  </div>
+                  <div className="chart-legend" aria-label="曲线显示">
+                    {chartLegendItems.map((item) => (
+                      <button
+                        key={item.key}
+                        className={`legend-item ${!visible[item.key] ? 'muted' : ''}`}
+                        aria-pressed={visible[item.key]}
+                        onClick={() =>
+                          setVisible({
+                            ...visible,
+                            [item.key]: !visible[item.key],
+                          })
+                        }
+                      >
+                        <span className={`line-swatch ${item.key}`} />
+                        {item.label}
+                      </button>
+                    ))}
+                    <span className="chart-scale">20 Hz — 20 kHz</span>
+                  </div>
+                  <FrequencyChart
+                    measurement={measurement}
+                    target={target}
+                    bands={bands}
+                    bypass={bypass}
+                    visible={visible}
+                    selected={selected}
+                    onSelect={setSelected}
+                    onChange={updateBand}
+                  />
+                  <div className="chart-footer">
+                    <span>
+                      <Info size={12} />
+                      {hasMeasurement
+                        ? 'EQ 后曲线为计算预测，未包含前级整体衰减'
+                        : '无实测响应；图中仅显示目标与 EQ 增益'}
                     </span>
+                    <span>对数频率 · 48 kHz</span>
                   </div>
-                  <div className="eq-actions">
-                    <button
-                      className="text-button"
-                      onClick={() => {
-                        setBands((current) =>
-                          current.map((b) => ({ ...b, gain: 0 })),
-                        );
-                        setToast('各段增益已归零');
-                      }}
-                    >
-                      <RotateCcw size={12} />
-                      归零
-                    </button>
-                    <button
-                      className="text-button"
-                      disabled={bands.length >= 12}
-                      onClick={() => {
-                        const band = newBand();
-                        setBands([...bands, band]);
-                        setSelected(band.id);
-                      }}
-                    >
-                      <Plus size={13} />
-                      添加滤波器
-                    </button>
+                </section>
+
+                <section className="panel eq-panel">
+                  <div className="panel-header">
+                    <div className="panel-title">
+                      <SlidersHorizontal size={15} />
+                      <h2>参数均衡器</h2>
+                      <span className="small-count">
+                        {bands.filter((b) => b.enabled).length} / {bands.length}{' '}
+                        段
+                      </span>
+                    </div>
+                    <div className="eq-actions">
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setBands((current) =>
+                            current.map((b) => ({ ...b, gain: 0 })),
+                          );
+                          setToast('各段增益已归零');
+                        }}
+                      >
+                        <RotateCcw size={12} />
+                        归零
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={bands.length >= 12}
+                        onClick={() => {
+                          const band = newBand();
+                          setBands([...bands, band]);
+                          setSelected(band.id);
+                        }}
+                      >
+                        <Plus size={13} />
+                        添加滤波器
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="eq-table-wrap">
-                  <table className="eq-table">
-                    <thead>
-                      <tr>
-                        <th className="band-column">启用</th>
-                        <th>类型</th>
-                        <th>
-                          频率 <span>Hz</span>
-                        </th>
-                        <th>
-                          增益 <span>dB</span>
-                        </th>
-                        <th>Q 值</th>
-                        <th className="delete-column">
-                          <span className="sr-only">删除</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bands.map((band, index) => (
-                        <tr
-                          key={band.id}
-                          className={`${selected === band.id ? 'selected-row' : ''} ${!band.enabled ? 'disabled-row' : ''}`}
-                          onFocus={() => setSelected(band.id)}
-                        >
-                          <td>
-                            <label className="band-enable">
-                              <input
-                                type="checkbox"
-                                aria-label={`启用滤波器 ${index + 1}`}
-                                checked={band.enabled}
+                  <div className="eq-table-wrap">
+                    <table className="eq-table">
+                      <thead>
+                        <tr>
+                          <th className="band-column">启用</th>
+                          <th>类型</th>
+                          <th>
+                            频率 <span>Hz</span>
+                          </th>
+                          <th>
+                            增益 <span>dB</span>
+                          </th>
+                          <th>Q 值</th>
+                          <th className="delete-column">
+                            <span className="sr-only">删除</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bands.map((band, index) => (
+                          <tr
+                            key={band.id}
+                            className={`${selected === band.id ? 'selected-row' : ''} ${!band.enabled ? 'disabled-row' : ''}`}
+                            onFocus={() => setSelected(band.id)}
+                          >
+                            <td>
+                              <label className="band-enable">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`启用滤波器 ${index + 1}`}
+                                  checked={band.enabled}
+                                  onChange={(e) =>
+                                    updateBand(band.id, {
+                                      enabled: e.target.checked,
+                                    })
+                                  }
+                                />
+                                <span>
+                                  {String(index + 1).padStart(2, '0')}
+                                </span>
+                              </label>
+                            </td>
+                            <td>
+                              <select
+                                aria-label={`滤波器 ${index + 1} 类型`}
+                                value={band.kind}
                                 onChange={(e) =>
                                   updateBand(band.id, {
-                                    enabled: e.target.checked,
+                                    kind: e.target.value as Band['kind'],
                                   })
                                 }
+                              >
+                                <option value="PK">Peaking</option>
+                                <option value="LSC">Low shelf</option>
+                                <option value="HSC">High shelf</option>
+                              </select>
+                            </td>
+                            <td>
+                              <NumericInput
+                                label={`滤波器 ${index + 1} 频率`}
+                                value={band.frequency}
+                                min={20}
+                                max={20000}
+                                onChange={(value) =>
+                                  updateBand(band.id, { frequency: value })
+                                }
                               />
-                              <span>{String(index + 1).padStart(2, '0')}</span>
-                            </label>
-                          </td>
-                          <td>
-                            <select
-                              aria-label={`滤波器 ${index + 1} 类型`}
-                              value={band.kind}
-                              onChange={(e) =>
-                                updateBand(band.id, {
-                                  kind: e.target.value as Band['kind'],
-                                })
-                              }
-                            >
-                              <option value="PK">Peaking</option>
-                              <option value="LSC">Low shelf</option>
-                              <option value="HSC">High shelf</option>
-                            </select>
-                          </td>
-                          <td>
-                            <NumericInput
-                              label={`滤波器 ${index + 1} 频率`}
-                              value={band.frequency}
-                              min={20}
-                              max={20000}
-                              onChange={(value) =>
-                                updateBand(band.id, { frequency: value })
-                              }
-                            />
-                          </td>
-                          <td>
-                            <NumericInput
-                              label={`滤波器 ${index + 1} 增益`}
-                              value={band.gain}
-                              min={-18}
-                              max={12}
-                              step={0.1}
-                              onChange={(value) =>
-                                updateBand(band.id, { gain: value })
-                              }
-                            />
-                          </td>
-                          <td>
-                            <NumericInput
-                              label={`滤波器 ${index + 1} Q 值`}
-                              value={band.q}
-                              min={0.25}
-                              max={10}
-                              step={0.01}
-                              onChange={(value) =>
-                                updateBand(band.id, { q: value })
-                              }
-                            />
-                          </td>
-                          <td>
-                            <button
-                              className="icon-button delete-band"
-                              aria-label={`删除滤波器 ${index + 1}`}
-                              onClick={() =>
-                                setBands(bands.filter((b) => b.id !== band.id))
-                              }
-                            >
-                              <X size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {bands.length === 0 && (
-                    <div className="empty-table">
-                      还没有滤波器。添加一段，或自动生成 EQ。
-                    </div>
-                  )}
-                </div>
-                <div className="table-footnote">
-                  <span>PK 峰值 · LSC 低架 · HSC 高架</span>
-                  <button
-                    className="text-button"
-                    onClick={() => setVisible({ ...visible, eq: !visible.eq })}
-                  >
-                    {visible.eq ? '隐藏' : '显示'}图上控制点
-                    <ArrowUpRight size={12} />
-                  </button>
-                </div>
-              </section>
-            </div>
-
-            <aside className="tuning-column" aria-label="调音设置">
-              <section className="panel tuning-panel">
-                <div className="panel-header">
-                  <div className="panel-title">
-                    <Settings2 size={15} />
-                    <h2>调音设置</h2>
-                  </div>
-                  <span className="tiny-label">01</span>
-                </div>
-                <div className="tuning-content">
-                  <label className="field-label" htmlFor="target-select">
-                    目标曲线
-                  </label>
-                  <div className="select-wrap target-picker">
-                    <select
-                      id="target-select"
-                      value={target}
-                      disabled={fitting}
-                      onChange={(e) => setTarget(e.target.value as TargetId)}
-                    >
-                      {TARGETS.map((t) => (
-                        <option value={t.id} key={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={13} />
-                  </div>
-                  <p className="field-description">
-                    {TARGETS.find((t) => t.id === target)!.description}
-                  </p>
-                  <div className="section-divider" />
-                  <div className="control-heading">
-                    <span>自动拟合</span>
-                    <span className="tiny-label">PARAMETRIC EQ</span>
-                  </div>
-                  <div className="setting-row">
-                    <label htmlFor="band-count">滤波器数量</label>
-                    <select
-                      id="band-count"
-                      value={fitCount}
-                      disabled={fitting}
-                      onChange={(e) => setFitCount(Number(e.target.value))}
-                    >
-                      {[4, 6, 8, 10].map((n) => (
-                        <option key={n} value={n}>
-                          {n} 段
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="setting-row">
-                    <label htmlFor="max-boost">单段最大提升</label>
-                    <select
-                      id="max-boost"
-                      value={maxBoost}
-                      disabled={fitting}
-                      onChange={(e) => setMaxBoost(Number(e.target.value))}
-                    >
-                      {[0, 3, 6].map((n) => (
-                        <option key={n} value={n}>
-                          +{n} dB
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="setting-row">
-                    <span>拟合范围</span>
-                    <strong>{fitRange}</strong>
-                  </div>
-                  <button
-                    className="button autoeq-button"
-                    onClick={runFit}
-                    disabled={fitting}
-                  >
-                    {fitting ? (
-                      <LoaderCircle size={15} className="spin" />
-                    ) : (
-                      <SlidersHorizontal size={14} />
+                            </td>
+                            <td>
+                              <NumericInput
+                                label={`滤波器 ${index + 1} 增益`}
+                                value={band.gain}
+                                min={-18}
+                                max={12}
+                                step={0.1}
+                                onChange={(value) =>
+                                  updateBand(band.id, { gain: value })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <NumericInput
+                                label={`滤波器 ${index + 1} Q 值`}
+                                value={band.q}
+                                min={0.25}
+                                max={10}
+                                step={0.01}
+                                onChange={(value) =>
+                                  updateBand(band.id, { q: value })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <button
+                                className="icon-button delete-band"
+                                aria-label={`删除滤波器 ${index + 1}`}
+                                onClick={() =>
+                                  setBands(
+                                    bands.filter((b) => b.id !== band.id),
+                                  )
+                                }
+                              >
+                                <X size={13} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {bands.length === 0 && (
+                      <div className="empty-table">
+                        还没有滤波器。添加一段，或自动生成 EQ。
+                      </div>
                     )}
-                    {fitting ? '正在拟合…' : '自动生成 EQ'}
-                  </button>
-                  <p className="quiet-note">生成后可继续手动调整参数。</p>
-                </div>
-              </section>
-              <section className="panel output-panel">
-                <div className="panel-header">
-                  <div className="panel-title">
-                    <Cpu size={15} />
-                    <h2>输出余量</h2>
                   </div>
-                  <span className="tiny-label">02</span>
-                </div>
-                <div className="tuning-content">
-                  <div className="preamp-reading">
-                    <div>
-                      <span className="field-label">前级增益</span>
-                      <div className="preamp-number">
-                        {effectivePreamp.toFixed(1)}
-                        <span>dB</span>
+                  <div className="table-footnote">
+                    <span>PK 峰值 · LSC 低架 · HSC 高架</span>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        setVisible({ ...visible, eq: !visible.eq })
+                      }
+                    >
+                      {visible.eq ? '隐藏' : '显示'}图上控制点
+                      <ArrowUpRight size={12} />
+                    </button>
+                  </div>
+                </section>
+              </div>
+
+              <aside className="tuning-column" aria-label="调音设置">
+                <section className="panel tuning-panel">
+                  <div className="panel-header">
+                    <div className="panel-title">
+                      <Settings2 size={15} />
+                      <h2>调音设置</h2>
+                    </div>
+                    <span className="tiny-label">01</span>
+                  </div>
+                  <div className="tuning-content">
+                    <label className="field-label" htmlFor="target-select">
+                      目标曲线
+                    </label>
+                    <div className="select-wrap target-picker">
+                      <select
+                        id="target-select"
+                        value={target.id}
+                        disabled={fitting}
+                        onChange={(e) => {
+                          const next = availableTargets.find(
+                            (item) => item.id === e.target.value,
+                          );
+                          if (next) setTarget(next);
+                        }}
+                      >
+                        {availableTargets.map((t) => (
+                          <option value={t.id} key={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={13} />
+                    </div>
+                    <p className="field-description">{target.description}</p>
+                    <p className="target-source">{target.source}</p>
+                    <button
+                      className="text-button target-import-button"
+                      onClick={() => {
+                        setImportKind('target');
+                        setImportError('');
+                        setModal('import');
+                      }}
+                    >
+                      <Upload size={13} />
+                      导入目标曲线
+                    </button>
+                    <div className="section-divider" />
+                    <div className="control-heading">
+                      <span>自动拟合</span>
+                      <span className="tiny-label">PARAMETRIC EQ</span>
+                    </div>
+                    <div className="setting-row">
+                      <label htmlFor="band-count">滤波器数量</label>
+                      <select
+                        id="band-count"
+                        value={fitCount}
+                        disabled={fitting}
+                        onChange={(e) => setFitCount(Number(e.target.value))}
+                      >
+                        {[4, 6, 8, 10].map((n) => (
+                          <option key={n} value={n}>
+                            {n} 段
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="setting-row">
+                      <label htmlFor="max-boost">单段最大提升</label>
+                      <select
+                        id="max-boost"
+                        value={maxBoost}
+                        disabled={fitting}
+                        onChange={(e) => setMaxBoost(Number(e.target.value))}
+                      >
+                        {[0, 3, 6].map((n) => (
+                          <option key={n} value={n}>
+                            +{n} dB
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="setting-row">
+                      <span>拟合范围</span>
+                      <strong>{fitRange}</strong>
+                    </div>
+                    <button
+                      className="button autoeq-button"
+                      onClick={runFit}
+                      disabled={fitting || !hasMeasurement}
+                    >
+                      {fitting ? (
+                        <LoaderCircle size={15} className="spin" />
+                      ) : (
+                        <SlidersHorizontal size={14} />
+                      )}
+                      {fitting ? '正在拟合…' : '自动生成 EQ'}
+                    </button>
+                    <p className="quiet-note">
+                      {hasMeasurement
+                        ? '拟合结果可继续手动调整参数。'
+                        : '导入耳机实测曲线后可启用自动拟合。'}
+                    </p>
+                  </div>
+                </section>
+                <section className="panel output-panel">
+                  <div className="panel-header">
+                    <div className="panel-title">
+                      <Cpu size={15} />
+                      <h2>输出余量</h2>
+                    </div>
+                    <span className="tiny-label">02</span>
+                  </div>
+                  <div className="tuning-content">
+                    <div className="preamp-reading">
+                      <div>
+                        <span className="field-label">前级增益</span>
+                        <div className="preamp-number">
+                          {effectivePreamp.toFixed(1)}
+                          <span>dB</span>
+                        </div>
+                      </div>
+                      <div className="headroom-meter" aria-hidden="true">
+                        {Array.from({ length: 13 }, (_, i) => (
+                          <i
+                            key={i}
+                            className={
+                              i <
+                              Math.min(
+                                12,
+                                Math.ceil(Math.abs(effectivePreamp) * 1.2),
+                              )
+                                ? 'lit'
+                                : ''
+                            }
+                          />
+                        ))}
                       </div>
                     </div>
-                    <div className="headroom-meter" aria-hidden="true">
-                      {Array.from({ length: 13 }, (_, i) => (
-                        <i
-                          key={i}
-                          className={
-                            i <
-                            Math.min(
-                              12,
-                              Math.ceil(Math.abs(effectivePreamp) * 1.2),
-                            )
-                              ? 'lit'
-                              : ''
-                          }
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <label className="auto-preamp">
-                    <input
-                      type="checkbox"
-                      checked={autoPreamp}
-                      onChange={(e) => {
-                        if (!e.target.checked) setPreamp(suggested);
-                        setAutoPreamp(e.target.checked);
-                      }}
-                    />
-                    <span>自动保留余量</span>
-                  </label>
-                  {!autoPreamp && (
-                    <div className="manual-preamp">
-                      <NumericInput
-                        label="前级增益"
-                        value={preamp}
-                        min={-180}
-                        max={0}
-                        step={0.1}
-                        suffix="dB"
-                        onChange={setPreamp}
+                    <label className="auto-preamp">
+                      <input
+                        type="checkbox"
+                        checked={autoPreamp}
+                        onChange={(e) => {
+                          if (!e.target.checked) setPreamp(suggested);
+                          setAutoPreamp(e.target.checked);
+                        }}
                       />
-                    </div>
+                      <span>自动保留余量</span>
+                    </label>
+                    {!autoPreamp && (
+                      <div className="manual-preamp">
+                        <NumericInput
+                          label="前级增益"
+                          value={preamp}
+                          min={-180}
+                          max={0}
+                          step={0.1}
+                          suffix="dB"
+                          onChange={setPreamp}
+                        />
+                      </div>
+                    )}
+                    <p
+                      className={
+                        effectivePreamp > suggested + 0.05
+                          ? 'warning-text preamp-note'
+                          : 'preamp-note'
+                      }
+                    >
+                      {effectivePreamp > suggested + 0.05
+                        ? `可能削波，建议降至 ${suggested.toFixed(1)} dB。`
+                        : '按 EQ 最大提升预留 0.5 dB 余量。'}
+                    </p>
+                  </div>
+                </section>
+                <section className="fit-summary">
+                  {hasMeasurement ? (
+                    <>
+                      <div className="fit-summary-header">
+                        与目标的平均偏差<span>RMS</span>
+                      </div>
+                      <div className="deviation-values">
+                        <div>
+                          <span>调整前</span>
+                          <strong>
+                            {beforeError.toFixed(2)}
+                            <small>dB</small>
+                          </strong>
+                        </div>
+                        <ArrowLeft size={16} className="deviation-arrow" />
+                        <div>
+                          <span>调整后{bypass ? ' · 旁路' : ''}</span>
+                          <strong className="after-value">
+                            {afterError.toFixed(2)}
+                            <small>dB</small>
+                          </strong>
+                        </div>
+                      </div>
+                      <p>
+                        {fitRange}，等对数频率加权。
+                        <br />
+                        偏差仅反映曲线距离，不代表听感评分。
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="fit-summary-header">手动模式</div>
+                      <p>
+                        当前没有耳机实测响应，无法计算曲线偏差或自动生成 EQ。
+                      </p>
+                    </>
                   )}
-                  <p
-                    className={
-                      effectivePreamp > suggested + 0.05
-                        ? 'warning-text preamp-note'
-                        : 'preamp-note'
-                    }
-                  >
-                    {effectivePreamp > suggested + 0.05
-                      ? `可能削波，建议降至 ${suggested.toFixed(1)} dB。`
-                      : '按 EQ 最大提升预留 0.5 dB 余量。'}
-                  </p>
-                </div>
-              </section>
-              <section className="fit-summary">
-                <div className="fit-summary-header">
-                  与目标的平均偏差<span>RMS</span>
-                </div>
-                <div className="deviation-values">
-                  <div>
-                    <span>调整前</span>
-                    <strong>
-                      {beforeError.toFixed(2)}
-                      <small>dB</small>
-                    </strong>
-                  </div>
-                  <ArrowLeft size={16} className="deviation-arrow" />
-                  <div>
-                    <span>调整后{bypass ? ' · 旁路' : ''}</span>
-                    <strong className="after-value">
-                      {afterError.toFixed(2)}
-                      <small>dB</small>
-                    </strong>
-                  </div>
-                </div>
+                </section>
+              </aside>
+            </div>
+          ) : (
+            <section className="empty-workbench" aria-label="开始调音">
+              <div className="empty-workbench-copy">
+                <Headphones size={26} strokeWidth={1.2} />
+                <h2>开始调音</h2>
                 <p>
-                  {fitRange}，等对数频率加权。
-                  <br />
-                  偏差仅反映曲线距离，不代表听感评分。
+                  自动拟合需要耳机实测曲线和目标曲线。耳机型号不是必需条件；也可以直接按听感手动设置
+                  EQ。
                 </p>
-              </section>
-            </aside>
-          </div>
+                <div className="empty-workbench-actions">
+                  <button
+                    className="button button-primary"
+                    onClick={() => {
+                      setImportKind('measurement');
+                      setImportError('');
+                      setModal('import');
+                    }}
+                  >
+                    <Upload size={14} />
+                    导入实测曲线
+                  </button>
+                  <button
+                    className="button"
+                    onClick={() => {
+                      setManualMode(true);
+                      const initial = initialBands();
+                      setBands(initial);
+                      setSelected(initial[0]?.id ?? null);
+                      setVisible({
+                        measured: false,
+                        target: true,
+                        predicted: false,
+                        eq: true,
+                      });
+                    }}
+                  >
+                    <SlidersHorizontal size={14} />
+                    直接手动调音
+                  </button>
+                  <a
+                    href="https://squig.link/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    浏览公开测量库 <ArrowUpRight size={13} />
+                  </a>
+                </div>
+                <small>
+                  手动模式下可调参数并导出配置；不会显示耳机预测响应。
+                </small>
+              </div>
+            </section>
+          )}
           <footer className="workspace-footer">
             <span className="footer-wordmark">TONEBENCH</span>
             <span>听感由你决定，曲线提供参考。</span>
@@ -1089,8 +1290,28 @@ export default function App() {
             {modal === 'import' && (
               <div className="modal-body">
                 <p className="modal-description">
-                  导入频响测量，或继续编辑 ToneBench 预设。
+                  导入公开测量或自己的曲线。原始数据保存在当前浏览器。
                 </p>
+                <div className="segmented-control import-kind-control">
+                  <button
+                    className={importKind === 'measurement' ? 'active' : ''}
+                    onClick={() => {
+                      setImportKind('measurement');
+                      setImportError('');
+                    }}
+                  >
+                    耳机实测
+                  </button>
+                  <button
+                    className={importKind === 'target' ? 'active' : ''}
+                    onClick={() => {
+                      setImportKind('target');
+                      setImportError('');
+                    }}
+                  >
+                    目标曲线
+                  </button>
+                </div>
                 <button
                   className="import-dropzone"
                   onClick={() => file.current?.click()}
@@ -1102,15 +1323,19 @@ export default function App() {
                   }}
                 >
                   <Upload size={26} strokeWidth={1.2} />
-                  <strong>选择文件，或拖到这里</strong>
-                  <span>CSV / TXT / TSV 测量 · JSON 预设 · 最大 1 MB</span>
+                  <strong>
+                    {importKind === 'measurement'
+                      ? '选择实测文件，或拖到这里'
+                      : '选择目标文件，或拖到这里'}
+                  </strong>
+                  <span>CSV / TXT / TSV · 频率 Hz 与声压 dB · 最大 1 MB</span>
                 </button>
                 <input
                   ref={file}
                   type="file"
                   accept=".csv,.txt,.tsv,.json"
                   className="sr-only"
-                  aria-label="选择测量或预设文件"
+                  aria-label="选择频响曲线或预设文件"
                   onChange={(e) => {
                     const picked = e.target.files?.[0];
                     if (picked) void importFile(picked);
@@ -1123,7 +1348,11 @@ export default function App() {
                   </p>
                 )}
                 <div className="format-help">
-                  <h3>测量格式</h3>
+                  <h3>
+                    {importKind === 'measurement'
+                      ? '耳机实测格式'
+                      : '目标曲线格式'}
+                  </h3>
                   <p>
                     前两列为频率（Hz）与声压（dB），支持逗号、制表符或空格分隔。至少
                     8 个点，覆盖 100–8,000 Hz。
@@ -1132,29 +1361,19 @@ export default function App() {
                     frequency,db{'\n'}20,73.2{'\n'}25,74.1{'\n'}…
                   </pre>
                   <p>
-                    自动将 1 kHz 对齐到 0
-                    dB。当前按单条测量处理，立体声请分别导入。导入新测量会清空当前
-                    EQ，可先保存预设。
+                    导入后按 1 kHz 对齐到 0
+                    dB。测量曲线受夹具、佩戴深度和密封影响；尽量使用与目标曲线相容的测量条件。
                   </p>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      download(
-                        'tonebench-demo.csv',
-                        'frequency,db\n' +
-                          DEMOS[0].points
-                            .map(
-                              (p) =>
-                                `${p.frequency.toFixed(2)},${p.db.toFixed(4)}`,
-                            )
-                            .join('\n'),
-                        'text/csv',
-                      )
-                    }
+                  {importKind === 'measurement' && (
+                    <p>导入新测量会重置当前 EQ。</p>
+                  )}
+                  <a
+                    href="https://squig.link/"
+                    target="_blank"
+                    rel="noreferrer"
                   >
-                    <ArrowDownToLine size={13} />
-                    下载演示 CSV
-                  </button>
+                    打开 Squiglink 测量库 <ArrowUpRight size={13} />
+                  </a>
                 </div>
               </div>
             )}
@@ -1188,7 +1407,10 @@ export default function App() {
                   onChange={(e) => setPresetName(e.target.value)}
                 />
                 <p className="modal-description">
-                  包含原始测量、目标曲线、全部滤波器与前级增益。预设保存在当前浏览器中，可导出
+                  {hasMeasurement
+                    ? '包含耳机实测曲线、'
+                    : '不含耳机实测曲线；包含'}
+                  目标曲线、滤波器与前级增益。预设保存在当前浏览器中，可导出
                   JSON 备份。
                 </p>
                 <div className="modal-actions">
@@ -1225,7 +1447,7 @@ export default function App() {
                 <p className="modal-description">
                   {exportType === 'apo'
                     ? '导入 Equalizer APO / Peace 应用到实际音频。当前图表按 48 kHz 计算，其他采样率下高频响应会略有差别。'
-                    : '包含测量与完整调音参数，可再次导入 ToneBench。'}
+                    : '包含目标曲线与调音参数，可再次导入 ToneBench。'}
                 </p>
                 {bypass && (
                   <p className="import-error">
@@ -1251,7 +1473,7 @@ export default function App() {
                     className="button button-primary"
                     onClick={() => {
                       download(
-                        `${safeFilename(measurement.name)}.${exportType === 'apo' ? 'txt' : 'json'}`,
+                        `${safeFilename(hasMeasurement ? measurement.name : 'manual-eq')}.${exportType === 'apo' ? 'txt' : 'json'}`,
                         exportText,
                         exportType === 'apo'
                           ? 'text/plain'
@@ -1290,8 +1512,7 @@ export default function App() {
                             <strong>{p.name}</strong>
                             <small>
                               {p.bands.filter((b) => b.enabled).length} 段 EQ ·{' '}
-                              {new Date(p.savedAt).toLocaleDateString('zh-CN')}{' '}
-                              · {p.measurement.demo ? '演示测量' : '自定义测量'}
+                              {new Date(p.savedAt).toLocaleDateString('zh-CN')}
                             </small>
                           </span>
                           <ChevronRight size={15} />
@@ -1427,11 +1648,12 @@ export default function App() {
                     <span>个人耳机调音工作台 · v0.1</span>
                   </div>
                 </div>
-                <h3>先看曲线，再听自己的判断</h3>
+                <h3>测量与目标</h3>
                 <p>
-                  内置三组数据为合成演示，不对应真实耳机；目标曲线是 ToneBench
-                  的示意偏好曲线，不是已验证的标准目标。可导入自己的 CSV / TXT
-                  频响，再生成 EQ；成功导入的测量保存在本机，最多保留 20 条。
+                  当前目标为 Harman In-Ear 2019，数据来自 AutoEq
+                  项目；来源和许可见项目
+                  README。型号不是调音的必需条件。导入任意耳机的实测曲线可自动拟合或手动调整；没有实测曲线时也能直接手动创建
+                  EQ。
                 </p>
                 <h3>曲线与拟合</h3>
                 <p>

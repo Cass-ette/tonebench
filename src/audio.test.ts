@@ -3,7 +3,6 @@ import test from 'node:test';
 import {
   autoFit,
   bandResponse,
-  DEMOS,
   deviation,
   eqResponse,
   equalizerApo,
@@ -13,6 +12,7 @@ import {
   isPreset,
   normalize,
   parseMeasurement,
+  parseTarget,
   suggestedPreamp,
   TARGETS,
 } from './audio';
@@ -31,6 +31,12 @@ const peak: Band = {
   gain: 6,
   q: 1,
 };
+const flatMeasurement = parseMeasurement(
+  [20, 40, 100, 500, 1000, 2000, 8000, 20000]
+    .map((frequency) => `${frequency},80`)
+    .join('\n'),
+  'flat-test.csv',
+);
 
 test('peaking filter reaches the specified gain at its center and is transparent at 0 dB', () => {
   close(bandResponse(peak, 1000), 6);
@@ -92,6 +98,22 @@ test('CSV, TSV, whitespace and REW-style comments import with sorted, normalized
   }
 });
 
+test('target import normalizes the curve and the built-in target retains its source', () => {
+  const target = parseTarget(
+    [20, 40, 100, 500, 1000, 2000, 8000, 20000]
+      .map((frequency, index) => `${frequency},${80 + index}`)
+      .join('\n'),
+    'custom-target.csv',
+  );
+  close(interpolate(target.points, 1000), 0);
+  assert.equal(target.name, 'custom-target');
+  assert.equal(TARGETS.length, 1);
+  assert.equal(TARGETS[0].name, 'Harman In-Ear 2019');
+  assert.match(TARGETS[0].source, /7ae0f56d53074872b028649617a22bbb4232feb7/);
+  assert.ok(TARGETS[0].points.length > 600);
+  close(interpolate(TARGETS[0].points, 1000), 0);
+});
+
 test('malformed, duplicate and insufficient-range measurements are rejected', () => {
   assert.throws(
     () => parseMeasurement('20,NaN\n1000,80', 'bad.csv'),
@@ -124,33 +146,30 @@ test('malformed, duplicate and insufficient-range measurements are rejected', ()
   );
 });
 
-test('automatic EQ reduces deviation for every demo and target and respects constraints', () => {
-  for (const measurement of DEMOS)
-    for (const target of TARGETS) {
-      const before = deviation(measurement, target.id);
-      const bands = autoFit(measurement, target.id, 6, 6);
-      const after = deviation(measurement, target.id, bands);
-      assert.ok(
-        after < before * 0.65,
-        `${measurement.name} / ${target.name}: ${before} → ${after}`,
-      );
-      assert.ok(
-        bands.every(
-          (b) =>
-            b.gain <= 6 &&
-            b.gain >= -12 &&
-            b.q >= 0.35 &&
-            b.q <= 4 &&
-            b.frequency >= 25 &&
-            b.frequency <= 7500,
-        ),
-      );
-      assert.ok(
-        FREQUENCIES.every((f) => Number.isFinite(eqResponse(bands, f))),
-      );
-    }
-  const cutsOnly = autoFit(DEMOS[1], 'balanced', 4, 0);
+test('automatic EQ fits an imported measurement to a real target within constraints', () => {
+  const target = TARGETS[0];
+  const before = deviation(flatMeasurement, target);
+  const bands = autoFit(flatMeasurement, target, 6, 6);
+  const after = deviation(flatMeasurement, target, bands);
+  assert.ok(after < before * 0.65, `${before} → ${after}`);
+  assert.ok(
+    bands.every(
+      (b) =>
+        b.gain <= 6 &&
+        b.gain >= -12 &&
+        b.q >= 0.35 &&
+        b.q <= 4 &&
+        b.frequency >= 25 &&
+        b.frequency <= 7500,
+    ),
+  );
+  assert.ok(FREQUENCIES.every((f) => Number.isFinite(eqResponse(bands, f))));
+  const cutsOnly = autoFit(flatMeasurement, target, 4, 0);
   assert.ok(cutsOnly.every((b) => b.gain <= 0));
+  assert.throws(
+    () => autoFit({ ...flatMeasurement, points: [] }, target, 4, 6),
+    /请先导入耳机实测曲线/,
+  );
 });
 
 test('JSON preset round trip validates measurement and filter bounds, APO retains disabled bands', () => {
@@ -158,26 +177,27 @@ test('JSON preset round trip validates measurement and filter bounds, APO retain
     id: 'one',
     name: 'Demo\nPreamp: 100',
     savedAt: new Date().toISOString(),
-    measurement: DEMOS[0],
-    target: 'balanced',
+    measurement: flatMeasurement,
+    target: TARGETS[0],
     bands: initialBands(),
     preamp: -4,
   };
   const roundTrip: unknown = JSON.parse(JSON.stringify(preset));
   assert.ok(isPreset(roundTrip));
+  assert.ok(isPreset({ ...preset, measurement: null }));
   assert.equal(
     isPreset({ ...preset, bands: [{ ...peak, frequency: 25000 }] }),
     false,
   );
   assert.equal(isPreset({ ...preset, preamp: 20 }), false);
   assert.equal(
-    isPreset({ ...preset, measurement: { ...DEMOS[0], points: [] } }),
+    isPreset({ ...preset, measurement: { ...flatMeasurement, points: [] } }),
     false,
   );
   assert.equal(
     isPreset({
       ...preset,
-      measurement: { ...DEMOS[0], points: Array(8).fill(null) },
+      measurement: { ...flatMeasurement, points: Array(8).fill(null) },
     }),
     false,
   );

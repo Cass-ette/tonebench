@@ -9,7 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "tsx --test src/audio.test.ts",
     "smoke": "node scripts/smoke.mjs",
-    "format:check": "prettier --check README.md package.json tsconfig.json vite.config.ts index.html .prettierrc.json .github/workflows/check.yml src/audio.ts src/audio.test.ts src/App.tsx src/FrequencyChart.tsx src/main.tsx src/styles.css scripts/smoke.mjs",
+    "format:check": "prettier --check README.md package.json tsconfig.json vite.config.ts index.html .prettierrc.json .github/workflows/check.yml src/audio.ts src/audio.test.ts src/App.tsx src/FrequencyChart.tsx src/main.tsx src/styles.css src/harmanInEar2019.ts scripts/smoke.mjs",
     "check": "npm run test && npm run build"
   },
   "dependencies": {

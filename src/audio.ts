@@ -1,3 +1,5 @@
+import { HARMAN_IN_EAR_2019_RAW } from './harmanInEar2019';
+
 export type Point = { frequency: number; db: number };
 export type FilterKind = 'PK' | 'LSC' | 'HSC';
 export type Band = {
@@ -16,13 +18,20 @@ export type Measurement = {
   demo: boolean;
   points: Point[];
 };
-export type TargetId = 'balanced' | 'warm' | 'vocal';
+export type Target = {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  note: string;
+  points: Point[];
+};
 export type Preset = {
   id: string;
   name: string;
   savedAt: string;
-  measurement: Measurement;
-  target: TargetId;
+  measurement: Measurement | null;
+  target: Target;
   bands: Band[];
   preamp: number;
 };
@@ -31,32 +40,21 @@ export const FREQUENCIES = Array.from(
   { length: 241 },
   (_, i) => 20 * 1000 ** (i / 240),
 );
-export const TARGETS: { id: TargetId; name: string; description: string }[] = [
+export const TARGETS: Target[] = [
   {
-    id: 'balanced',
-    name: '均衡参考',
-    description: '适量低频与自然的中高频抬升',
+    id: 'harman-in-ear-2019',
+    name: 'Harman In-Ear 2019',
+    description: 'Harman 入耳式偏好目标曲线；个体听感与佩戴仍有差异。',
+    source:
+      'AutoEq · jaakkopasanen/AutoEq · 7ae0f56d53074872b028649617a22bbb4232feb7',
+    note: 'Harman 发布的入耳式偏好目标曲线，经 AutoEq 项目分发。',
+    points: normalize(
+      HARMAN_IN_EAR_2019_RAW.map(([frequency, db]) => ({ frequency, db })),
+    ),
   },
-  { id: 'warm', name: '温暖聆听', description: '低频更饱满，中高频稍收敛' },
-  { id: 'vocal', name: '人声清晰', description: '减少低频遮蔽，突出中频轮廓' },
 ];
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
-const bell = (f: number, center: number, width: number) =>
-  Math.exp(-0.5 * (Math.log2(f / center) / width) ** 2);
-
-function targetValue(f: number, id: TargetId) {
-  const bass =
-    (id === 'warm' ? 7 : id === 'vocal' ? 2.5 : 5) / (1 + (f / 140) ** 2.3);
-  const presence =
-    (id === 'warm' ? 7 : id === 'vocal' ? 10 : 9) * bell(f, 2900, 0.7);
-  const treble = 3 * bell(f, 8000, 0.48) - 5 * bell(f, 22000, 0.65);
-  return bass + presence + treble;
-}
-
-export function targetAt(f: number, id: TargetId) {
-  return targetValue(f, id) - targetValue(1000, id);
-}
 
 export function interpolate(points: Point[], frequency: number): number {
   if (!points.length) return 0;
@@ -80,61 +78,9 @@ export function normalize(points: Point[]): Point[] {
   return points.map((point) => ({ ...point, db: point.db - offset }));
 }
 
-export const DEMOS: Measurement[] = [
-  {
-    id: 'demo-open',
-    name: '开放式参考 A',
-    source: 'ToneBench 合成演示',
-    note: '模拟低频滚降与中高频起伏；不代表任何真实耳机。',
-    demo: true,
-    points: normalize(
-      FREQUENCIES.map((f) => ({
-        frequency: f,
-        db:
-          targetAt(f, 'balanced') -
-          5 / (1 + (f / 100) ** 1.8) -
-          2.8 * bell(f, 1600, 0.65) +
-          4 * bell(f, 5700, 0.42) -
-          3 * bell(f, 10500, 0.25),
-      })),
-    ),
-  },
-  {
-    id: 'demo-closed',
-    name: '封闭式参考 B',
-    source: 'ToneBench 合成演示',
-    note: '模拟低频偏暖与中频凹陷；不代表任何真实耳机。',
-    demo: true,
-    points: normalize(
-      FREQUENCIES.map((f) => ({
-        frequency: f,
-        db:
-          targetAt(f, 'balanced') +
-          4.5 * bell(f, 130, 1) -
-          3.5 * bell(f, 2200, 0.7) +
-          3 * bell(f, 7000, 0.4),
-      })),
-    ),
-  },
-  {
-    id: 'demo-iem',
-    name: '入耳式参考 C',
-    source: 'ToneBench 合成演示',
-    note: '模拟偏亮的中高频；不代表任何真实耳机。',
-    demo: true,
-    points: normalize(
-      FREQUENCIES.map((f) => ({
-        frequency: f,
-        db:
-          targetAt(f, 'balanced') +
-          2 * bell(f, 55, 0.8) +
-          4 * bell(f, 3500, 0.5) +
-          3.2 * bell(f, 8200, 0.32) -
-          2 * bell(f, 800, 0.5),
-      })),
-    ),
-  },
-];
+export function targetAt(frequency: number, target: Target) {
+  return interpolate(target.points, frequency);
+}
 
 export function newBand(frequency = 1000): Band {
   return {
@@ -251,9 +197,10 @@ export function suggestedPreamp(bands: Band[]): number {
 
 export function deviation(
   measurement: Measurement,
-  target: TargetId,
+  target: Target,
   bands: Band[] = [],
 ): number {
+  if (measurement.points.length === 0) return 0;
   const grid = FREQUENCIES.filter(
     (f) =>
       f >= Math.max(20, measurement.points[0].frequency) &&
@@ -274,10 +221,12 @@ export function deviation(
 
 export function autoFit(
   measurement: Measurement,
-  target: TargetId,
+  target: Target,
   count: number,
   maxBoost: number,
 ): Band[] {
+  if (measurement.points.length === 0)
+    throw new Error('请先导入耳机实测曲线。');
   const grid = FREQUENCIES.filter(
     (f) =>
       f >= Math.max(20, measurement.points[0].frequency) &&
@@ -401,6 +350,18 @@ export function parseMeasurement(text: string, filename: string): Measurement {
   };
 }
 
+export function parseTarget(text: string, filename: string): Target {
+  const measurement = parseMeasurement(text, filename);
+  return {
+    id: measurement.id,
+    name: measurement.name,
+    description: '用户导入的目标曲线，已按 1 kHz 对齐到 0 dB。',
+    source: measurement.source,
+    note: '用户导入 · 前两列：Hz / dB · 1 kHz 对齐。',
+    points: measurement.points,
+  };
+}
+
 export function equalizerApo(
   bands: Band[],
   preamp: number,
@@ -448,6 +409,53 @@ export function isMeasurement(value: unknown): value is Measurement {
   );
 }
 
+export function isBand(value: unknown): value is Band {
+  if (!value || typeof value !== 'object') return false;
+  const band = value as Band;
+  return (
+    typeof band.id === 'string' &&
+    typeof band.enabled === 'boolean' &&
+    ['PK', 'LSC', 'HSC'].includes(band.kind) &&
+    Number.isFinite(band.frequency) &&
+    band.frequency >= 20 &&
+    band.frequency <= 20000 &&
+    Number.isFinite(band.gain) &&
+    band.gain >= -18 &&
+    band.gain <= 12 &&
+    Number.isFinite(band.q) &&
+    band.q >= 0.25 &&
+    band.q <= 10
+  );
+}
+
+export function isTarget(value: unknown): value is Target {
+  if (!value || typeof value !== 'object') return false;
+  const target = value as Target;
+  return (
+    typeof target.id === 'string' &&
+    typeof target.name === 'string' &&
+    typeof target.description === 'string' &&
+    typeof target.source === 'string' &&
+    typeof target.note === 'string' &&
+    Array.isArray(target.points) &&
+    target.points.length >= 8 &&
+    target.points.length <= 50000 &&
+    target.points.every(
+      (point, i, all) =>
+        point != null &&
+        typeof point === 'object' &&
+        Number.isFinite(point.frequency) &&
+        point.frequency >= 20 &&
+        point.frequency <= 20000 &&
+        Number.isFinite(point.db) &&
+        Math.abs(point.db) < 600 &&
+        (!i || point.frequency > all[i - 1].frequency),
+    ) &&
+    target.points[0].frequency <= 100 &&
+    target.points.at(-1)!.frequency >= 8000
+  );
+}
+
 export function isPreset(value: unknown): value is Preset {
   if (!value || typeof value !== 'object') return false;
   const p = value as Preset;
@@ -456,30 +464,15 @@ export function isPreset(value: unknown): value is Preset {
     typeof p.name === 'string' &&
     typeof p.savedAt === 'string' &&
     Number.isFinite(Date.parse(p.savedAt)) &&
-    TARGETS.some((t) => t.id === p.target) &&
+    isTarget(p.target) &&
     Number.isFinite(p.preamp) &&
     p.preamp >= -180 &&
     p.preamp <= 0 &&
-    isMeasurement(p.measurement) &&
+    (p.measurement === null ||
+      (isMeasurement(p.measurement) && !p.measurement.demo)) &&
     Array.isArray(p.bands) &&
     p.bands.length <= 12 &&
-    p.bands.every(
-      (b) =>
-        b != null &&
-        typeof b === 'object' &&
-        typeof b.id === 'string' &&
-        typeof b.enabled === 'boolean' &&
-        ['PK', 'LSC', 'HSC'].includes(b.kind) &&
-        Number.isFinite(b.frequency) &&
-        b.frequency >= 20 &&
-        b.frequency <= 20000 &&
-        Number.isFinite(b.gain) &&
-        b.gain >= -18 &&
-        b.gain <= 12 &&
-        Number.isFinite(b.q) &&
-        b.q >= 0.25 &&
-        b.q <= 10,
-    ) &&
+    p.bands.every(isBand) &&
     new Set(p.bands.map((b) => b.id)).size === p.bands.length
   );
 }
