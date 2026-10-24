@@ -66,6 +66,124 @@ import fs from 'node:fs/promises';
     const restore = page.getByRole('button', { name: '撤销', exact: true });
     const reset = page.getByRole('button', { name: '恢复默认', exact: true });
     assert.equal(await restore.isDisabled(), true);
+    const guide = page.getByRole('region', {
+      name: '乐器与人声频段参考',
+      exact: true,
+    });
+    const beforeGuide = await page.evaluate(() =>
+      localStorage.getItem('tonebench.session.v1'),
+    );
+    await guide
+      .getByRole('button', { name: '频段参考 人声 / 乐器', exact: true })
+      .click();
+    for (const name of [
+      '人声',
+      '木吉他',
+      '电吉他',
+      '钢琴',
+      '贝斯',
+      '底鼓',
+      '军鼓',
+      '镲片',
+      '大提琴',
+      '小提琴',
+    ]) {
+      await guide.getByRole('button', { name, exact: true }).click();
+      assert.equal(await page.locator('.guide-highlight').count(), 1);
+      assert.equal(await restore.isDisabled(), true);
+    }
+    await guide.getByRole('button', { name: '大提琴', exact: true }).click();
+    await guide
+      .getByRole('button', { name: '清晰度 1–3 kHz', exact: true })
+      .click();
+    assert.equal(
+      await page.locator('.guide-highlight').getAttribute('data-low'),
+      '1000',
+    );
+    assert.equal(
+      await page.locator('.guide-highlight').getAttribute('data-high'),
+      '3000',
+    );
+    assert.ok(
+      (await page.locator('.guide-readout').innerText()).includes(
+        '大提琴 · 清晰度',
+      ),
+    );
+    const highlightedRange = await page
+      .locator('.guide-highlight rect')
+      .evaluate((el) => ({
+        x: el.x.baseVal.value,
+        width: el.width.baseVal.value,
+      }));
+    assert.ok(
+      Math.abs(highlightedRange.x - (48 + (Math.log10(1000 / 20) / 3) * 930)) <
+        0.001,
+    );
+    assert.ok(
+      Math.abs(highlightedRange.width - (Math.log10(3000 / 1000) / 3) * 930) <
+        0.001,
+    );
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem('tonebench.session.v1')),
+      beforeGuide,
+    );
+    assert.equal(await page.locator('.eq-curve').getAttribute('d'), manualPath);
+    await guide
+      .getByRole('button', { name: '添加此频段', exact: true })
+      .click();
+    assert.equal(await page.locator('.eq-table tbody tr').count(), 7);
+    assert.equal(
+      await page
+        .getByRole('spinbutton', { name: '滤波器 7 频率', exact: true })
+        .inputValue(),
+      '1732',
+    );
+    assert.equal(
+      await page
+        .getByRole('spinbutton', { name: '滤波器 7 增益', exact: true })
+        .inputValue(),
+      '0',
+    );
+    assert.equal(
+      await page
+        .getByRole('spinbutton', { name: '滤波器 7 Q 值', exact: true })
+        .inputValue(),
+      '0.8',
+    );
+    assert.equal(await page.locator('.eq-curve').getAttribute('d'), manualPath);
+    await restore.click();
+    assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
+    assert.equal(await restore.isDisabled(), true);
+    for (let i = 0; i < 6; i++)
+      await guide
+        .getByRole('button', { name: '添加此频段', exact: true })
+        .click();
+    assert.equal(await page.locator('.eq-table tbody tr').count(), 12);
+    assert.equal(
+      await guide
+        .getByRole('button', { name: '添加此频段', exact: true })
+        .isDisabled(),
+      true,
+    );
+    for (let i = 0; i < 6; i++) await restore.click();
+    assert.equal(await restore.isDisabled(), true);
+    await page
+      .locator('.response-panel')
+      .screenshot({ path: 'test-results/frequency-guide-desktop.png' });
+    await page.setViewportSize({ width: 390, height: 950 });
+    assert.ok(
+      await page
+        .locator('body')
+        .evaluate((el) => el.scrollWidth <= el.clientWidth),
+    );
+    await page
+      .locator('.response-panel')
+      .screenshot({ path: 'test-results/frequency-guide-mobile.png' });
+    await page.setViewportSize({ width: 1440, height: 1050 });
+    await guide
+      .getByRole('button', { name: '频段参考 人声 / 乐器', exact: true })
+      .click();
+    assert.equal(await page.locator('.guide-highlight').count(), 0);
     await manualGain.focus();
     await manualGain.press('Enter');
     assert.equal(await restore.isDisabled(), true);
@@ -608,6 +726,32 @@ import fs from 'node:fs/promises';
       ),
     );
     await nativePage.getByText('系统 EQ · 运行中', { exact: true }).waitFor();
+    const nativeMessagesBeforeGuide = await nativePage.evaluate(
+      () => window.__nativeMessages.filter((m) => m.action === 'update').length,
+    );
+    const nativeGuide = nativePage.getByRole('region', {
+      name: '乐器与人声频段参考',
+      exact: true,
+    });
+    await nativeGuide
+      .getByRole('button', { name: '频段参考 人声 / 乐器', exact: true })
+      .click();
+    await nativeGuide
+      .getByRole('button', { name: '大提琴', exact: true })
+      .click();
+    await nativeGuide
+      .getByRole('button', { name: '清晰度 1–3 kHz', exact: true })
+      .click();
+    assert.equal(
+      await nativePage.evaluate(
+        () =>
+          window.__nativeMessages.filter((m) => m.action === 'update').length,
+      ),
+      nativeMessagesBeforeGuide,
+    );
+    await nativeGuide
+      .getByRole('button', { name: '频段参考 人声 / 乐器', exact: true })
+      .click();
     const nativeGain = nativePage.getByRole('spinbutton', {
       name: '滤波器 1 增益',
       exact: true,
@@ -766,6 +910,7 @@ import fs from 'node:fs/promises';
           checks: [
             'render',
             'manual tuning without measurement',
+            'instrument/vocal ranges, logarithmic highlight, browsing leaves EQ and native audio unchanged, neutral filter creation, undo, 12-band limit and responsive guide',
             'restore numeric edits, zeroing, keyboard shortcut, add/delete, preamp, measurement, target, full graph drag and automatic EQ',
             'full EQ reset, flat gain curve, reload persistence, undo reset, retained measurement/target/presets and native reset settings',
             'parameter edit',

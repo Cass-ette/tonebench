@@ -835,10 +835,160 @@ h1 {
   padding: 0 10px;
 }
 .axis-caption {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 16px;
   color: #79828d;
   font-size: 8px;
   margin: 11px 0 0 5px;
   letter-spacing: 0.2px;
+}
+.guide-readout {
+  color: #a6bed6;
+  font-size: 9px;
+}
+.frequency-guide {
+  margin: 0 17px 9px;
+  border-top: 1px solid #30343a;
+  border-bottom: 1px solid #30343a;
+}
+.guide-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: #c4ced9;
+  font-size: 10px;
+  text-align: left;
+}
+.guide-toggle-hint {
+  color: #7f8b99;
+  font-size: 9px;
+}
+.guide-toggle > svg {
+  margin-left: auto;
+  color: #8c99a8;
+}
+.frequency-guide.open .guide-toggle > svg {
+  transform: rotate(180deg);
+}
+.guide-content {
+  padding: 1px 0 11px;
+}
+.guide-instruments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 11px;
+}
+.guide-chip {
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #919daa;
+  font-size: 10px;
+}
+.guide-chip:hover,
+.guide-chip[aria-pressed='true'] {
+  border-color: #4d5c6b;
+  background: #2a333e;
+  color: #d0deec;
+}
+.guide-regions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+.guide-region {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 9px 10px;
+  background: #1b1e22;
+  border: 1px solid #353b43;
+  border-radius: 3px;
+  color: #aab5c2;
+  font-size: 10px;
+  text-align: left;
+}
+.guide-region:hover,
+.guide-region[aria-pressed='true'] {
+  background: #262f39;
+  border-color: #6c849d;
+  color: #dae6f2;
+}
+.guide-region small {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #8e9fb2;
+}
+.guide-advice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 20px;
+  margin-top: 12px;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.guide-advice > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.guide-advice span {
+  color: #b6c8dc;
+  white-space: nowrap;
+}
+.guide-advice p {
+  margin: 0;
+  color: #9ba7b5;
+}
+.guide-bottom {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+.guide-bottom p {
+  margin: 0;
+  color: #7f8b99;
+  font-size: 9px;
+  line-height: 1.7;
+}
+.guide-add {
+  margin-left: auto;
+  color: #b8cce0;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .frequency-guide {
+    margin-left: 11px;
+    margin-right: 11px;
+  }
+  .guide-instruments {
+    gap: 3px;
+  }
+  .guide-chip {
+    padding: 5px 8px;
+  }
+  .guide-regions {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .guide-advice {
+    grid-template-columns: 1fr;
+  }
+  .guide-bottom {
+    flex-wrap: wrap;
+    gap: 9px;
+  }
 }
 .frequency-chart > svg {
   display: block;

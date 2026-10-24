@@ -27,6 +27,9 @@ import {
   X,
 } from 'lucide-react';
 import FrequencyChart from './FrequencyChart';
+import FrequencyGuide from './FrequencyGuide';
+import { INSTRUMENTS, formatGuideHz } from './instrumentRanges';
+import type { FrequencyRegion } from './instrumentRanges';
 import SpectrumPanel from './SpectrumPanel';
 import type { CurveVisibility } from './FrequencyChart';
 import {
@@ -204,6 +207,16 @@ export default function App() {
   const [fitCount, setFitCount] = useState(6);
   const [maxBoost, setMaxBoost] = useState(6);
   const [fitting, setFitting] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideInstrumentId, setGuideInstrumentId] = useState(INSTRUMENTS[0].id);
+  const [guideRegionId, setGuideRegionId] = useState(
+    INSTRUMENTS[0].regions[0].id,
+  );
+  const guideInstrument =
+    INSTRUMENTS.find((item) => item.id === guideInstrumentId) ?? INSTRUMENTS[0];
+  const guideRegion =
+    guideInstrument.regions.find((item) => item.id === guideRegionId) ??
+    guideInstrument.regions[0];
   const [toast, setToast] = useState('');
   const [storageProblem, setStorageProblem] = useState(false);
   const [importError, setImportError] = useState('');
@@ -412,6 +425,17 @@ export default function App() {
       eq: true,
     });
     setToast('已恢复默认 EQ：6 段，增益 0 dB');
+  };
+  const addGuideBand = (region: FrequencyRegion) => {
+    if (bands.length >= 12 || fitting) return;
+    const frequency = Math.round(Math.sqrt(region.low * region.high));
+    const band = { ...newBand(frequency), q: 0.8 };
+    changeTuning({ bands: [...bands, band] });
+    setSelected(band.id);
+    setVisible((current) => ({ ...current, eq: true }));
+    setToast(
+      `已添加 ${formatGuideHz(frequency)}，增益 0 dB；拖动控制点或编辑增益试听`,
+    );
   };
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -963,6 +987,22 @@ export default function App() {
                       <p>尚未导入实测曲线，图上没有耳机当前的频响。</p>
                     )}
                   </details>
+                  <FrequencyGuide
+                    open={guideOpen}
+                    instrumentId={guideInstrumentId}
+                    regionId={guideRegionId}
+                    canAdd={bands.length < 12 && !fitting}
+                    onToggle={() => setGuideOpen(!guideOpen)}
+                    onInstrument={(id) => {
+                      setGuideInstrumentId(id);
+                      setGuideRegionId(
+                        INSTRUMENTS.find((item) => item.id === id)!.regions[0]
+                          .id,
+                      );
+                    }}
+                    onRegion={setGuideRegionId}
+                    onAdd={addGuideBand}
+                  />
                   <FrequencyChart
                     measurement={measurement}
                     target={target}
@@ -975,6 +1015,15 @@ export default function App() {
                     onChange={updateBand}
                     onEditStart={() => dispatch({ type: 'begin' })}
                     onEditEnd={() => dispatch({ type: 'end' })}
+                    reference={
+                      guideOpen
+                        ? {
+                            low: guideRegion.low,
+                            high: guideRegion.high,
+                            label: `${guideInstrument.name} · ${guideRegion.name}`,
+                          }
+                        : null
+                    }
                   />
                   <div className="chart-footer">
                     <span>
@@ -1882,6 +1931,11 @@ export default function App() {
                   比较曲线时，请留意测量条件。不同夹具、佩戴和密封会影响结果，最终以试听为准。
                 </p>
                 <h3>参数调整</h3>
+                <p>
+                  打开“频段参考”，选择人声或乐器和听感区域，可在图上查看常见调音范围。“添加此频段”会创建一段
+                  0 dB
+                  的滤波器，再按听感调整。它不会分离乐器，同一频段的其他声音也会受到影响。
+                </p>
                 <p>
                   调整频率、增益与 Q 值，按 Enter 或移开焦点生效。打开“EQ
                   增益”后可拖动图上的控制点。

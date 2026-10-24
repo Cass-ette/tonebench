@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import type { Band, Measurement, Target } from './audio';
 import { clamp, eqResponse, FREQUENCIES, interpolate, targetAt } from './audio';
+import { formatGuideRange } from './instrumentRanges';
 
 export type CurveVisibility = {
   measured: boolean;
@@ -20,6 +21,7 @@ type Props = {
   onChange: (id: string, patch: Partial<Band>) => void;
   onEditStart: () => void;
   onEditEnd: () => void;
+  reference: { low: number; high: number; label: string } | null;
 };
 const W = 1000,
   H = 380,
@@ -50,6 +52,7 @@ export default function FrequencyChart({
   onChange,
   onEditStart,
   onEditEnd,
+  reference,
 }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const id = useId().replace(/:/g, '');
@@ -120,7 +123,16 @@ export default function FrequencyChart({
     hover.frequency <= measurement.points.at(-1)!.frequency;
   return (
     <div className="frequency-chart" data-testid="frequency-chart">
-      <div className="axis-caption">相对声压 · dB</div>
+      <div className="axis-caption">
+        <span>
+          {measurement.points.length ? '相对声压 · dB' : 'EQ 增益 · dB'}
+        </span>
+        {reference && (
+          <span className="guide-readout">
+            {reference.label} · {formatGuideRange(reference)}
+          </span>
+        )}
+      </div>
       <svg
         ref={svg}
         viewBox={`0 0 ${W} ${H}`}
@@ -213,6 +225,36 @@ export default function FrequencyChart({
             </text>
           </g>
         ))}
+        {reference && (
+          <g
+            className="guide-highlight"
+            pointerEvents="none"
+            data-low={reference.low}
+            data-high={reference.high}
+            aria-hidden="true"
+          >
+            <rect
+              x={px(reference.low)}
+              y={TOP}
+              width={px(reference.high) - px(reference.low)}
+              height={INNER_H}
+              fill="#8eafcc"
+              opacity="0.09"
+            />
+            {[reference.low, reference.high].map((frequency) => (
+              <line
+                key={frequency}
+                x1={px(frequency)}
+                x2={px(frequency)}
+                y1={TOP}
+                y2={H - BOTTOM}
+                stroke="#8eafcc"
+                strokeDasharray="3 5"
+                opacity="0.55"
+              />
+            ))}
+          </g>
+        )}
         <g clipPath={`url(#clip-${id})`}>
           {visible.target && (
             <path
