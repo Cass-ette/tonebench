@@ -31,6 +31,7 @@ import FrequencyGuide from './FrequencyGuide';
 import { INSTRUMENTS, formatGuideHz } from './instrumentRanges';
 import type { FrequencyRegion } from './instrumentRanges';
 import SpectrumPanel from './SpectrumPanel';
+import StemPanel from './StemPanel';
 import type { CurveVisibility } from './FrequencyChart';
 import {
   autoFit,
@@ -195,6 +196,7 @@ export default function App() {
     dispatch({ type: 'change', patch });
   const [presets, setPresets] = useState(readPresets);
   const [modal, setModal] = useState<Modal>(null);
+  const [page, setPage] = useState<'tuning' | 'stems'>('tuning');
   const [visible, setVisible] = useState<CurveVisibility>({
     measured: !session.manualMode,
     target: !session.manualMode,
@@ -442,6 +444,7 @@ export default function App() {
       const element = event.target as HTMLElement | null;
       if (
         modal ||
+        page !== 'tuning' ||
         fitting ||
         !history.past.length ||
         event.defaultPrevented ||
@@ -505,6 +508,7 @@ export default function App() {
     }
     setSelected(preset.bands[0]?.id ?? null);
     setModal(null);
+    setPage('tuning');
     setToast(`已载入「${preset.name}」`);
   };
   const changeMeasurement = (next: Measurement) => {
@@ -661,6 +665,7 @@ export default function App() {
           onClick={(e) => {
             e.preventDefault();
             setModal(null);
+            setPage('tuning');
           }}
         >
           <span className="brand-mark">
@@ -673,12 +678,25 @@ export default function App() {
         <div className="nav-caption">工作空间</div>
         <nav aria-label="主导航">
           <button
-            className={`nav-item ${modal !== 'presets' && modal !== 'gear' ? 'active' : ''}`}
-            onClick={() => setModal(null)}
+            className={`nav-item ${page === 'tuning' && modal !== 'presets' && modal !== 'gear' ? 'active' : ''}`}
+            onClick={() => {
+              setModal(null);
+              setPage('tuning');
+            }}
           >
             <SlidersHorizontal size={16} />
             调音工作台
             <span className="nav-indicator" />
+          </button>
+          <button
+            className={`nav-item ${page === 'stems' && !modal ? 'active' : ''}`}
+            onClick={() => {
+              setModal(null);
+              setPage('stems');
+            }}
+          >
+            <AudioLines size={16} />
+            声部试听<span className="nav-count">实验</span>
           </button>
           <button
             className={`nav-item ${modal === 'presets' ? 'active' : ''}`}
@@ -733,18 +751,22 @@ export default function App() {
           <div className="breadcrumb">
             <span>工作空间</span>
             <ChevronRight size={13} />
-            <strong>调音工作台</strong>
+            <strong>{page === 'stems' ? '声部试听' : '调音工作台'}</strong>
           </div>
           <div className="topbar-right">
             <span
               className={`draft-status ${storageProblem ? 'warning-text' : ''}`}
             >
               <span className="status-led" />
-              {storageProblem ? '草稿未保存，请导出备份' : '草稿已保存在本机'}
+              {page === 'stems'
+                ? '本地音频工作区'
+                : storageProblem
+                  ? '草稿未保存，请导出备份'
+                  : '草稿已保存在本机'}
             </span>
             <button
               className="button save-button"
-              disabled={!hasActiveWorkbench}
+              disabled={!hasActiveWorkbench || page !== 'tuning'}
               onClick={() => {
                 setPresetName(
                   `${hasMeasurement ? measurement.name : '手动调音'} · ${target.name}`,
@@ -757,7 +779,10 @@ export default function App() {
             </button>
           </div>
         </header>
-        <main>
+        <main hidden={page !== 'stems'}>
+          <StemPanel />
+        </main>
+        <main hidden={page !== 'tuning'}>
           <section className="workspace-heading">
             <div>
               <div className="eyebrow">HEADPHONE TUNING</div>
@@ -1955,6 +1980,11 @@ export default function App() {
                     : '网页可编辑和导出 EQ。使用 Mac 应用可开启系统 EQ，实时处理其他应用的声音并查看频谱。'}
                 </p>
                 <h3>保存与导出</h3>
+                <p>
+                  Mac
+                  应用的“声部试听”可导入音频，在本机分离为四路并调整音量。当前播放器不叠加工作台
+                  EQ，分离结果可打开文件夹另存。
+                </p>
                 <p>将调音设置保存为预设，或导出配置文件供其他软件使用。</p>
                 <p>
                   草稿、测量、预设和器材记录保存在本机，不会上传。清除应用或浏览器数据会删除本地记录，请用

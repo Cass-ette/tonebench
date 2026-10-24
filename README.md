@@ -39,6 +39,28 @@ TONEBENCH_SWIFT_BUILD=/private/tmp/tonebench-swift-build npm run mac:build
 
 开发诊断：`open -n build/ToneBench.app --args --smoke-test` 检查原生界面；`--audio-check` 会请求系统音频权限，以零增益旁路短暂检查回调，然后自动退出。结果写入 `test-results/`，不包含音频。回调正常不等于所有播放器或设备均已通过听测。
 
+## 声部试听（Mac 实验功能）
+
+左侧“声部试听”可导入本地音频，用 HTDemucs 分成人声、鼓、贝斯与其他伴奏。四路可独听、静音和调整音量（−24 至 +6 dB），支持原曲 / 分离混音对比、进度跳转及“还原音量”。默认先分离前 60 秒，也可处理最长 10 分钟的完整音频。不会自动播放。
+
+当前分离环境面向 Apple Silicon Mac，首次安装需要 Python 3.11、FFmpeg 和网络；推理全部在本机 CPU 上运行，不上传音频，也不在播放中实时分离：
+
+```sh
+brew install python@3.11 ffmpeg # 已安装则跳过
+zsh scripts/setup-separation.sh
+npm run mac:build
+```
+
+运行环境和模型安装在项目的 `.separation/`（已忽略）。构建时应用记录本机 Python、FFmpeg 和模型路径；移动项目目录、在其他 Mac 使用时须重新安装 / 构建。没有环境仍可使用原来的 EQ，声部分离入口会提示安装。模型约 80 MB，Python 运行环境另占空间。
+
+分离采用 [Demucs 4.0.1](https://github.com/facebookresearch/demucs) 的 HTDemucs 四声部模型 `955717e8-8726e21a.th`，从 Meta 官方地址下载并校验 SHA-256 前缀。许可见 [Demucs MIT](LICENSES/Demucs-MIT.txt)。此模型同时处理波形和频谱；傅立叶变换提供频率表示，神经网络负责估计声部，不能靠 FFT 本身识别乐器。
+
+“其他伴奏”包含未单独分出的乐器，不能单独提取任意大提琴、小提琴等。分离可能有串音、残留和音色变化；四路重新混合也不保证与原曲完全一致。当前播放器只调整声部音量，不叠加工作台 EQ（系统音频捕获会排除 ToneBench 自身以避免回授）。
+
+音频解码为立体声浮点 WAV，各声部保留相对电平，不逐路归一化；播放时根据声部峰值和增益作保守的整体衰减，界面显示“播放余量”。原曲和分离混音采用相同衰减以便比较。分离文件写入 `~/Library/Caches/app.tonebench.mac/Separation/`；取消或失败时删除当次未完成文件。成功结果保留，可点“打开分离文件夹”另存；缓存可能被系统清理。音量修改只影响试听，不重写 WAV；当前未实现调整后的混音导出、曲库或会话恢复。
+
+可用 `build/ToneBench.app/Contents/MacOS/ToneBench --stem-check /absolute/path/short-audio.wav` 检查实际导入、模型推理、播放图、跳转与原曲切换；使用临时浏览器数据，播放测试静音，结果在 `test-results/native-stems-check.json`。
+
 ## 网页编辑器
 
 需要 Node.js 22.12+（或 20.19+）。
@@ -106,7 +128,7 @@ EQ 响应采用 Robert Bristow-Johnson Audio EQ Cookbook 的双二阶滤波器�
 
 自动拟合需要耳机实测曲线和目标曲线；耳机型号名称不是必需条件。没有实测曲线时仍可手动编辑、保存和导出 EQ，但不会显示耳机响应预测，也无法自动拟合。公开数据库中的数据可按来源文件名导入。RMS 偏差只表示曲线距离，不是听感评分。
 
-Mac 应用开启系统 EQ 后，参数和旁路会应用到当前输出设备的音频。网页只编辑和预测，不处理其他应用的声音。导出保留已启用的滤波器；APO 配置需要在相应音频软件中应用。当前未内置音乐播放器或曲库。
+Mac 应用开启系统 EQ 后，参数和旁路会应用到当前输出设备的音频。网页只编辑和预测，不处理其他应用的声音。导出保留已启用的滤波器；APO 配置需要在相应音频软件中应用。当前包含实验性的本地声部播放器，未实现曲库。
 
 ## 数据与后续方向
 

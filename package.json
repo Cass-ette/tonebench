@@ -7,9 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "tsx --test src/audio.test.ts src/spectrum.test.ts src/history.test.ts",
-    "smoke": "node scripts/smoke.mjs",
-    "format:check": "prettier --check README.md package.json tsconfig.json vite.config.ts index.html .prettierrc.json .github/workflows/check.yml src/audio.ts src/audio.test.ts src/App.tsx src/FrequencyChart.tsx src/FrequencyGuide.tsx src/instrumentRanges.ts src/SpectrumPanel.tsx src/spectrum.ts src/spectrum.test.ts src/history.ts src/history.test.ts src/main.tsx src/styles.css src/harmanInEar2019.ts scripts/smoke.mjs src/native.ts src/identity.ts",
+    "test": "tsx --test src/audio.test.ts src/spectrum.test.ts src/history.test.ts src/stems.test.ts",
+    "smoke": "node scripts/smoke.mjs && node scripts/stems-smoke.mjs",
+    "format:check": "prettier --check README.md package.json tsconfig.json vite.config.ts index.html .prettierrc.json .github/workflows/check.yml src/audio.ts src/audio.test.ts src/App.tsx src/FrequencyChart.tsx src/FrequencyGuide.tsx src/instrumentRanges.ts src/SpectrumPanel.tsx src/spectrum.ts src/spectrum.test.ts src/history.ts src/history.test.ts src/main.tsx src/styles.css src/harmanInEar2019.ts scripts/smoke.mjs src/native.ts src/identity.ts src/StemPanel.tsx src/stems.ts src/stems.test.ts scripts/stems-smoke.mjs",
     "check": "npm run test && npm run build",
     "mac:build": "zsh scripts/build-mac.sh",
     "mac:test": "swift test --package-path macos --scratch-path macos/.build"

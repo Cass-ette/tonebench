@@ -1,4 +1,5 @@
 import AppKit
+import ToneStems
 import UniformTypeIdentifiers
 import WebKit
 
@@ -36,8 +37,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
   private var window: NSWindow!
   private var web: WKWebView!
   private let engine = AudioEngine()
+  private var stems: StemSession!
   private let smokeTest = CommandLine.arguments.contains("--smoke-test")
   private let audioCheck = CommandLine.arguments.contains("--audio-check")
+  private var stemCheck: String? {
+    guard let index = CommandLine.arguments.firstIndex(of: "--stem-check"),
+      CommandLine.arguments.count > index + 1
+    else { return nil }
+    return CommandLine.arguments[index + 1]
+  }
+  private var stemCheckStage = 0
+  private var stemCheckReport: [String: Any] = [:]
   private var audioCheckFinished = false
   private var spectrumCheckFinished = false
 
@@ -72,8 +82,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
       NSApp.terminate(nil)
       return
     }
+    stems = StemSession(resources: resources.appendingPathComponent("Separation"))
     let configuration = WKWebViewConfiguration()
-    if smokeTest || audioCheck { configuration.websiteDataStore = .nonPersistent() }
+    if smokeTest || audioCheck || stemCheck != nil {
+      configuration.websiteDataStore = .nonPersistent()
+    }
     configuration.setURLSchemeHandler(
       WebFiles(root: resources.appendingPathComponent("Web")), forURLScheme: "tonebench")
     configuration.userContentController.add(self, name: "tonebench")
@@ -106,11 +119,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         completionHandler: nil)
       if self?.audioCheck == true { self?.recordAudioCheck(status) }
     }
+    stems.onChange = { [weak self] status in
+      guard let data = try? JSONSerialization.data(withJSONObject: status),
+        let json = String(data: data, encoding: .utf8)
+      else { return }
+      self?.web.evaluateJavaScript(
+        "window.dispatchEvent(new CustomEvent('tonebench:stems', {detail: \(json)}));",
+        completionHandler: nil)
+      if self?.stemCheck != nil { self?.recordStemCheck(status) }
+    }
     engine.onSpectrum = { [weak self] frame in
       let json: String
       if let frame, let data = try? JSONSerialization.data(withJSONObject: frame),
         let text = String(data: data, encoding: .utf8)
-      { json = text } else { json = "null" }
+      {
+        json = text
+      } else {
+        json = "null"
+      }
       self?.web.evaluateJavaScript(
         "window.dispatchEvent(new CustomEvent('tonebench:spectrum', {detail: \(json)}));",
         completionHandler: nil)
@@ -138,6 +164,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
     else { return }
     switch action {
     case "ready": engine.publish()
+    case "stemsReady": stems.publish()
+    case "stemsImport":
+      guard !stems.busy, stems.available else {
+        stems.publish()
+        return
+      }
+      let panel = NSOpenPanel()
+      panel.canChooseFiles = true
+      panel.canChooseDirectories = false
+      panel.allowsMultipleSelection = false
+      panel.allowedContentTypes = [
+        .audio, .mp3, .wav, .aiff, .mpeg4Audio,
+        UTType(filenameExtension: "flac") ?? .audio,
+      ]
+      // FFmpeg also accepts formats whose installed UTI declarations do not
+      // conform to public.audio. Validate by decoding after selection.
+      panel.allowsOtherFileTypes = true
+      let preview = body["preview"] as? Bool ?? true
+      panel.beginSheetModal(for: window) { result in
+        guard result == .OK, let url = panel.url else { return }
+        self.stems.load(url, preview: preview)
+      }
+    case "stemsCancel": stems.cancel()
+    case "stemsPlay": stems.togglePlayback()
+    case "stemsSeek":
+      if let value = body["seconds"] as? Double { stems.seek(value) }
+    case "stemsControls":
+      guard let rows = body["stems"] as? [[String: Any]], let original = body["original"] as? Bool
+      else { return }
+      stems.controls(rows, original: original)
+    case "stemsReveal":
+      if let folder = stems.outputFolder { NSWorkspace.shared.open(folder) }
     case "stop": engine.stop()
     case "start", "update":
       guard let object = body["settings"], JSONSerialization.isValidJSONObject(object),
@@ -192,9 +250,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
   }
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     engine.stop()
+    stems.close()
     webView.reload()
   }
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    if let path = stemCheck, stemCheckStage == 0 {
+      stemCheckStage = 1
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        self.web.evaluateJavaScript(
+          "[...document.querySelectorAll('nav button')].find(b => b.textContent.includes('声部试听'))?.click()"
+        )
+        self.stems.load(URL(fileURLWithPath: path), preview: true)
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 120) { NSApp.terminate(nil) }
+    }
     if audioCheck {
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
         self.web.evaluateJavaScript(
@@ -211,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
           const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '直接手动调音');
           if (!button) throw new Error('React workbench did not render');
           button.click();
-          return { title: document.querySelector('h1')?.textContent, native: window.__TONEBENCH_NATIVE__, uuid: typeof crypto.getRandomValues, body: document.body.innerText };
+          return { title: document.querySelector('main:not([hidden]) h1')?.textContent, native: window.__TONEBENCH_NATIVE__, uuid: typeof crypto.getRandomValues, body: document.body.innerText };
         })()
         """
       self.web.evaluateJavaScript(script) { result, error in
@@ -263,6 +332,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
       }
     }
   }
+  private func recordStemCheck(_ status: [String: Any]) {
+    guard stemCheckStage == 1, let phase = status["phase"] as? String,
+      ["ready", "error"].contains(phase)
+    else { return }
+    stemCheckStage = 2
+    stemCheckReport["separation"] = status
+    DispatchQueue.main.async {
+      if phase == "ready" {
+        let muted: [[String: Any]] = StemMix.ids.map {
+          ["id": $0, "gain": 0.0, "muted": true, "solo": false]
+        }
+        self.stems.controls(muted, original: false)
+        // Verify the actual audio output graph without audible test playback.
+        self.stems.togglePlayback()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+          self.stems.onChange = { value in self.stemCheckReport["playback"] = value }
+          self.stems.publish()
+          self.stems.onChange = nil
+          self.stems.togglePlayback()
+          self.stems.seek(1)
+          self.stems.controls(muted, original: true)
+          self.stems.onChange = { value in self.stemCheckReport["seekAndCompare"] = value }
+          self.stems.publish()
+          self.stems.onChange = nil
+          self.finishStemCheck()
+        }
+      } else {
+        self.finishStemCheck()
+      }
+    }
+  }
+  private func finishStemCheck() {
+    let root = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("test-results")
+    try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    if let data = try? JSONSerialization.data(
+      withJSONObject: stemCheckReport, options: [.prettyPrinted, .sortedKeys])
+    {
+      try? data.write(to: root.appendingPathComponent("native-stems-check.json"))
+    }
+    web.takeSnapshot(with: nil) { image, _ in
+      if let tiff = image?.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+        let png = bitmap.representation(using: .png, properties: [:])
+      {
+        try? png.write(to: root.appendingPathComponent("native-stems.png"))
+      }
+      NSApp.terminate(nil)
+    }
+  }
   private func recordSpectrumCheck(_ frame: [String: Any]) {
     guard !spectrumCheckFinished else { return }
     spectrumCheckFinished = true
@@ -275,7 +393,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
       "bins": levels.count, "maximumDBFS": levels.max() ?? -120,
       "finite": levels.allSatisfy { $0.isFinite },
     ]
-    if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
+    if let data = try? JSONSerialization.data(
+      withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+    {
       try? data.write(to: root.appendingPathComponent("native-spectrum-check.json"))
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -285,7 +405,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         self.web.takeSnapshot(with: nil) { image, _ in
           if let tiff = image?.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
             let png = bitmap.representation(using: .png, properties: [:])
-          { try? png.write(to: root.appendingPathComponent("native-spectrum.png")) }
+          {
+            try? png.write(to: root.appendingPathComponent("native-spectrum.png"))
+          }
         }
       }
     }
@@ -293,9 +415,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
     engine.stop()
   }
-  func applicationWillTerminate(_ notification: Notification) { engine.stop() }
+  func applicationWillTerminate(_ notification: Notification) {
+    engine.stop()
+    stems.close()
+  }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-  func windowWillClose(_ notification: Notification) { engine.stop() }
+  func windowWillClose(_ notification: Notification) {
+    engine.stop()
+    stems.close()
+  }
 }
 
 let delegate = AppDelegate()

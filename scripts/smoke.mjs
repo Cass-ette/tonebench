@@ -297,7 +297,9 @@ import fs from 'node:fs/promises';
     const originalFrequency = await manualFrequency.inputValue();
     await manualFrequency.fill('900');
     await manualFrequency.press('Enter');
-    await page.locator('h1').click();
+    await page
+      .getByRole('heading', { name: '调音工作台', exact: true })
+      .click();
     await page.keyboard.press('ControlOrMeta+z');
     await expectInputValue(manualFrequency, originalFrequency);
     await expectInputValue(manualGain, '3.5');
@@ -495,10 +497,12 @@ import fs from 'node:fs/promises';
     });
     await page.getByRole('button', { name: '实测曲线', exact: true }).waitFor();
     await page.screenshot({ path: 'test-results/desktop.png', fullPage: true });
-    const fontInfo = await page.locator('h1').evaluate((el) => ({
-      font: getComputedStyle(el).fontFamily,
-      pingfang: document.fonts.check('16px "PingFang SC"'),
-    }));
+    const fontInfo = await page
+      .getByRole('heading', { name: '调音工作台', exact: true })
+      .evaluate((el) => ({
+        font: getComputedStyle(el).fontFamily,
+        pingfang: document.fonts.check('16px "PingFang SC"'),
+      }));
     const originalPath = await page
       .locator('.predicted-curve')
       .getAttribute('d');

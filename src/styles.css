@@ -113,6 +113,250 @@ button svg {
   display: flex;
   min-height: 100vh;
 }
+.workspace > main[hidden] {
+  display: none;
+}
+.stem-workspace {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.stem-file {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 26px;
+  border-bottom: 1px solid var(--border);
+}
+.stem-file-icon {
+  color: var(--accent);
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  background: #252a30;
+  border: 1px solid #363e47;
+  border-radius: 7px;
+}
+.stem-file > div:nth-child(2) {
+  min-width: 0;
+}
+.stem-file strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.stem-file span:not(.stem-local) {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 7px;
+}
+.stem-local {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.stem-transport {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 26px;
+}
+.stem-play {
+  background: #c6d2dd;
+  border: 0;
+  color: #19212a;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.stem-time {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 11px;
+}
+.stem-transport input {
+  flex: 1;
+  min-width: 40px;
+}
+.stem-workspace input[type='range'] {
+  accent-color: #b5c6d7;
+  height: 4px;
+  cursor: pointer;
+}
+.stem-transport .stem-compare {
+  margin-left: 12px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+  min-width: 160px;
+}
+.stem-compare button {
+  white-space: nowrap;
+}
+.stem-mixer {
+  margin-top: 22px;
+}
+.stem-mixer .panel-header {
+  padding: 18px 26px;
+}
+.stem-row {
+  display: grid;
+  grid-template-columns: 145px 48px 48px minmax(80px, 1fr) 80px;
+  gap: 14px;
+  align-items: center;
+  padding: 23px 26px;
+  border-top: 1px solid #2b2e32;
+}
+.stem-name strong {
+  display: block;
+  font-weight: 500;
+  font-size: 13px;
+}
+.stem-name span {
+  display: block;
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 1.3px;
+  color: var(--faint);
+}
+.stem-switch {
+  border: 1px solid #393d43;
+  background: transparent;
+  border-radius: 4px;
+  padding: 6px 0;
+  font-size: 11px;
+  color: #a3aab3;
+}
+.stem-switch.active {
+  border-color: #798da1;
+  color: #d4e2ef;
+  background: #2c3845;
+}
+.stem-row input {
+  width: 100%;
+  margin: 0;
+}
+.stem-row output {
+  font-family: var(--mono);
+  text-align: right;
+  font-size: 14px;
+}
+.stem-row output small {
+  color: var(--faint);
+  font-size: 10px;
+  margin-left: 7px;
+}
+.stem-muted .stem-name,
+.stem-muted output {
+  opacity: 0.45;
+}
+.stem-mixer-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 26px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+.stem-mixer-footer b {
+  color: #aebfce;
+  font-weight: 400;
+  margin-left: 10px;
+  font-family: var(--mono);
+}
+.stem-notes {
+  margin-top: 22px;
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--faint);
+}
+.stem-notes p {
+  margin: 5px 0;
+}
+.stem-notice {
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  background: #22272d;
+  border: 1px solid #39434e;
+  border-radius: 5px;
+  line-height: 1.8;
+  color: #bac9d7;
+  font-size: 12px;
+}
+.stem-player > .stem-notice {
+  margin: 20px 26px 0;
+}
+.stem-progress {
+  padding: 22px 26px 0;
+  color: var(--accent);
+}
+.stem-progress > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stem-progress button {
+  margin-left: auto;
+}
+.stem-progress progress {
+  width: 100%;
+  accent-color: #aebfce;
+  height: 4px;
+  display: block;
+  margin-top: 15px;
+}
+.stem-progress small {
+  color: var(--faint);
+  display: block;
+  margin-top: 12px;
+  font-size: 11px;
+}
+@media (max-width: 700px) {
+  .stem-row {
+    grid-template-columns: minmax(65px, 1fr) 42px 42px 65px;
+    gap: 10px;
+    padding: 18px;
+  }
+  .stem-row input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 10px;
+  }
+  .stem-transport {
+    padding: 18px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .stem-transport .stem-compare {
+    margin: 10px 0 0;
+    width: 100%;
+  }
+  .stem-compare button {
+    flex: 1;
+  }
+  .stem-file {
+    padding: 18px;
+    gap: 12px;
+  }
+  .stem-local {
+    display: none;
+  }
+  .stem-mixer .panel-header,
+  .stem-mixer-footer {
+    padding: 18px;
+  }
+}
+.stem-playback-message {
+  padding: 0 26px 18px;
+  margin: 0;
+  color: var(--accent);
+  font-size: 11px;
+}
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;

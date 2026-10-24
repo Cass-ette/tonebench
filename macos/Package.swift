@@ -9,9 +9,11 @@ let package = Package(
     .target(
       name: "ToneDSP", publicHeadersPath: "include",
       linkerSettings: [.linkedFramework("CoreAudio"), .linkedFramework("Accelerate")]),
+    .target(name: "ToneStems", linkerSettings: [.linkedFramework("AVFoundation")]),
     .executableTarget(
-      name: "ToneBench", dependencies: ["ToneDSP"],
+      name: "ToneBench", dependencies: ["ToneDSP", "ToneStems"],
       linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
     .testTarget(name: "ToneDSPTests", dependencies: ["ToneDSP"]),
+    .testTarget(name: "ToneStemsTests", dependencies: ["ToneStems"]),
   ]
 )

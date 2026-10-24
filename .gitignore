@@ -10,3 +10,5 @@ test-results/
 build/
 macos/.build/
 macos/.swiftpm/
+.separation/
+__pycache__/
