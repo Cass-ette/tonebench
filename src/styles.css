@@ -742,6 +742,20 @@ h1 {
   color: #717c8b;
   margin-left: 7px;
 }
+.response-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.reset-tuning-button {
+  height: 27px;
+  padding: 0 9px;
+  gap: 5px;
+  font-size: 10px;
+  color: #d3deea;
+  border-color: #535f6e;
+}
 .bypass-button {
   display: flex;
   align-items: center;
@@ -807,8 +821,7 @@ h1 {
   border-color: #e1e5ea;
 }
 .line-swatch.eq {
-  border-color: #77828f;
-  border-top-style: dotted;
+  border-color: #a7bfd8;
 }
 .chart-scale {
   font-family: var(--mono);
@@ -862,9 +875,8 @@ h1 {
   stroke-width: 1.8;
 }
 .eq-curve {
-  stroke: #7b8798;
-  stroke-width: 1.2;
-  stroke-dasharray: 2 4;
+  stroke: #a7bfd8;
+  stroke-width: 1.7;
 }
 .band-handle {
   cursor: grab;

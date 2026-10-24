@@ -194,7 +194,7 @@ export default function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [visible, setVisible] = useState<CurveVisibility>({
     measured: !session.manualMode,
-    target: true,
+    target: !session.manualMode,
     predicted: !session.manualMode,
     eq: session.manualMode,
   });
@@ -388,12 +388,30 @@ export default function App() {
     if (hasMeasurement !== measured) {
       setVisible({
         measured,
-        target: true,
+        target: measured,
         predicted: measured,
         eq: !measured,
       });
     }
-    setToast('已还原上一步调音');
+    setToast('已撤销上一步调音');
+  };
+  const resetTuning = () => {
+    if (fitting) return;
+    const defaults = initialBands();
+    changeTuning({
+      bands: defaults,
+      preamp: 0,
+      autoPreamp: true,
+      bypass: false,
+    });
+    setSelected(defaults[0].id);
+    setVisible({
+      measured: hasMeasurement,
+      target: hasMeasurement,
+      predicted: hasMeasurement,
+      eq: true,
+    });
+    setToast('已恢复默认 EQ：6 段，增益 0 dB');
   };
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -438,7 +456,7 @@ export default function App() {
     });
     setVisible({
       measured: preset.measurement !== null,
-      target: true,
+      target: preset.measurement !== null,
       predicted: preset.measurement !== null,
       eq: preset.measurement === null,
     });
@@ -875,18 +893,29 @@ export default function App() {
                       <h2>{hasMeasurement ? '频响对比' : '调音曲线'}</h2>
                       <span className="subtle-en">FREQUENCY RESPONSE</span>
                     </div>
-                    <button
-                      className={`bypass-button ${bypass ? 'engaged' : ''}`}
-                      aria-pressed={bypass}
-                      onClick={() => changeTuning({ bypass: !bypass })}
-                    >
-                      <span className="bypass-light" />
-                      {bypass
-                        ? 'EQ 已旁路'
-                        : audioStatus.phase === 'running'
-                          ? 'EQ 已启用'
-                          : 'EQ 曲线'}
-                    </button>
+                    <div className="response-actions">
+                      <button
+                        className="button reset-tuning-button"
+                        title="重置频率、增益、Q 值和前级；保留测量、目标和预设，可撤销"
+                        disabled={fitting}
+                        onClick={resetTuning}
+                      >
+                        <RotateCcw size={12} />
+                        恢复默认
+                      </button>
+                      <button
+                        className={`bypass-button ${bypass ? 'engaged' : ''}`}
+                        aria-pressed={bypass}
+                        onClick={() => changeTuning({ bypass: !bypass })}
+                      >
+                        <span className="bypass-light" />
+                        {bypass
+                          ? 'EQ 已旁路'
+                          : audioStatus.phase === 'running'
+                            ? 'EQ 已启用'
+                            : 'EQ 曲线'}
+                      </button>
+                    </div>
                   </div>
                   <div className="chart-legend" aria-label="曲线显示">
                     {chartLegendItems.map((item) => (
@@ -952,7 +981,7 @@ export default function App() {
                       <Info size={12} />
                       {hasMeasurement
                         ? 'EQ 后曲线为计算预测，未包含前级整体衰减'
-                        : '无实测响应；图中仅显示目标与 EQ 增益'}
+                        : 'EQ 增益：0 dB 表示不调整；目标曲线可按需显示'}
                     </span>
                     <span>对数频率 · {sampleRate / 1000} kHz</span>
                   </div>
@@ -981,7 +1010,7 @@ export default function App() {
                         onClick={restoreTuning}
                       >
                         <Undo2 size={12} />
-                        还原
+                        撤销
                       </button>
                       <button
                         className="text-button"
@@ -1395,7 +1424,7 @@ export default function App() {
                       setSelected(initial[0]?.id ?? null);
                       setVisible({
                         measured: false,
-                        target: true,
+                        target: false,
                         predicted: false,
                         eq: true,
                       });
@@ -1858,8 +1887,12 @@ export default function App() {
                   增益”后可拖动图上的控制点。
                 </p>
                 <p>
-                  点击“还原”可撤销上一步调音，支持连续还原；“归零”将各段增益设为
-                  0 dB。还原记录保留到本次使用结束。
+                  曲线右上角的“恢复默认”将频率、增益、Q
+                  值和前级恢复为初始设置，保留测量、目标和预设。“归零”只将各段增益设为
+                  0 dB。
+                </p>
+                <p>
+                  “撤销”可退回上一步操作，也可撤销恢复默认。撤销记录保留到本次使用结束。
                 </p>
                 <h3>音频与频谱</h3>
                 <p>

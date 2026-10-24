@@ -128,7 +128,7 @@ export default function FrequencyChart({
         aria-label={
           measurement.points.length
             ? '耳机原始频响、目标与 EQ 后预测曲线。启用 EQ 曲线后可拖动滤波器控制点。'
-            : '目标曲线与 EQ 增益。启用 EQ 曲线后可拖动滤波器控制点。'
+            : 'EQ 增益曲线，0 dB 表示不调整；目标曲线可按需显示。可拖动滤波器控制点。'
         }
         onPointerMove={move}
         onPointerLeave={() => {

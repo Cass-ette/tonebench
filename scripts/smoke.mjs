@@ -39,7 +39,8 @@ import fs from 'node:fs/promises';
       .getByText('在 Mac 应用中查看实时频谱', { exact: true })
       .waitFor();
     assert.equal(await page.locator('.spectrum-line').count(), 0);
-    assert.equal(await page.locator('.curve').count(), 2);
+    assert.equal(await page.locator('.curve').count(), 1);
+    assert.equal(await page.locator('.target-curve').count(), 0);
     assert.equal(
       await page
         .getByRole('button', { name: '自动生成 EQ', exact: true })
@@ -62,7 +63,8 @@ import fs from 'node:fs/promises';
       );
       assert.equal(await input.inputValue(), expected);
     };
-    const restore = page.getByRole('button', { name: '还原', exact: true });
+    const restore = page.getByRole('button', { name: '撤销', exact: true });
+    const reset = page.getByRole('button', { name: '恢复默认', exact: true });
     assert.equal(await restore.isDisabled(), true);
     await manualGain.focus();
     await manualGain.press('Enter');
@@ -124,6 +126,104 @@ import fs from 'node:fs/promises';
         .isChecked(),
       true,
     );
+    await manualFrequency.fill('900');
+    await manualFrequency.press('Enter');
+    const manualQ = page.getByRole('spinbutton', {
+      name: '滤波器 1 Q 值',
+      exact: true,
+    });
+    await manualQ.fill('2');
+    await manualQ.press('Enter');
+    await page.getByLabel('滤波器 1 类型', { exact: true }).selectOption('LSC');
+    await page.getByLabel('启用滤波器 2', { exact: true }).uncheck();
+    await page.getByRole('button', { name: '添加滤波器', exact: true }).click();
+    await page
+      .getByRole('checkbox', { name: '自动保留余量', exact: true })
+      .uncheck();
+    await manualPreamp.fill('-20');
+    await manualPreamp.press('Enter');
+    await page.getByRole('button', { name: 'EQ 曲线', exact: true }).click();
+    const beforeReset = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('tonebench.session.v1')),
+    );
+    const assertDefaultEQ = async (testPage) => {
+      await testPage.waitForFunction(() => {
+        const data = JSON.parse(localStorage.getItem('tonebench.session.v1'));
+        return data.bands.length === 6 && data.bands.every((b) => b.gain === 0);
+      });
+      const data = await testPage.evaluate(() =>
+        JSON.parse(localStorage.getItem('tonebench.session.v1')),
+      );
+      assert.deepEqual(
+        data.bands.map(({ frequency, gain, q, kind, enabled }) => ({
+          frequency,
+          gain,
+          q,
+          kind,
+          enabled,
+        })),
+        [60, 150, 400, 1000, 2400, 5500].map((frequency) => ({
+          frequency,
+          gain: 0,
+          q: 1,
+          kind: 'PK',
+          enabled: true,
+        })),
+      );
+      assert.equal(data.preamp, 0);
+      assert.equal(
+        await testPage
+          .getByRole('checkbox', { name: '自动保留余量', exact: true })
+          .isChecked(),
+        true,
+      );
+      const path = await testPage.locator('.eq-curve').getAttribute('d');
+      assert.equal(
+        new Set([...path.matchAll(/,(-?\d+\.\d+)/g)].map((m) => m[1])).size,
+        1,
+      );
+      assert.equal(
+        await testPage
+          .getByRole('button', { name: 'EQ 已旁路', exact: true })
+          .count(),
+        0,
+      );
+    };
+    await reset.click();
+    await assertDefaultEQ(page);
+    assert.equal(await page.locator('.target-curve').count(), 0);
+    assert.equal(await page.locator('.eq-curve').getAttribute('d'), manualPath);
+    await restore.click();
+    await expectInputValue(manualFrequency, '900');
+    await expectInputValue(manualQ, '2');
+    await expectInputValue(manualPreamp, '-20');
+    assert.equal(
+      await page.getByLabel('启用滤波器 2', { exact: true }).isChecked(),
+      false,
+    );
+    assert.deepEqual(
+      await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tonebench.session.v1')).bands,
+      ),
+      beforeReset.bands,
+    );
+    assert.equal(
+      await page
+        .getByRole('button', { name: 'EQ 已旁路', exact: true })
+        .getAttribute('aria-pressed'),
+      'true',
+    );
+    await reset.click();
+    await assertDefaultEQ(page);
+    await page.reload({ waitUntil: 'networkidle' });
+    await assertDefaultEQ(page);
+    assert.equal(await restore.isDisabled(), true);
+    assert.equal(await page.locator('.target-curve').count(), 0);
+    await page.getByRole('button', { name: '目标曲线', exact: true }).click();
+    assert.equal(await page.locator('.target-curve').count(), 1);
+    await page.getByRole('button', { name: '目标曲线', exact: true }).click();
+    await manualGain.fill('3.5');
+    await manualGain.press('Enter');
     await page.locator('.curve-guide summary').click();
     assert.ok(
       (await page.locator('.curve-guide').innerText()).includes(
@@ -339,6 +439,34 @@ import fs from 'node:fs/promises';
     await page.waitForFunction(
       () => !document.querySelector('.autoeq-button')?.hasAttribute('disabled'),
     );
+    const measuredBeforeReset = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('tonebench.session.v1')),
+    );
+    const presetsBeforeReset = await page.evaluate(() =>
+      localStorage.getItem('tonebench.presets.v1'),
+    );
+    await reset.click();
+    await assertDefaultEQ(page);
+    const measuredAfterReset = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('tonebench.session.v1')),
+    );
+    assert.deepEqual(
+      measuredAfterReset.measurement,
+      measuredBeforeReset.measurement,
+    );
+    assert.deepEqual(measuredAfterReset.target, measuredBeforeReset.target);
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem('tonebench.presets.v1')),
+      presetsBeforeReset,
+    );
+    await restore.click();
+    await page.waitForFunction(
+      (bands) =>
+        JSON.stringify(
+          JSON.parse(localStorage.getItem('tonebench.session.v1')).bands,
+        ) === JSON.stringify(bands),
+      measuredBeforeReset.bands,
+    );
     await restore.click();
     assert.deepEqual(
       await page.evaluate(
@@ -491,7 +619,7 @@ import fs from 'node:fs/promises';
         window.__nativeMessages.findLast((m) => m.action === 'update')?.settings
           .bands[0].gain === 4,
     );
-    await nativePage.getByRole('button', { name: '还原', exact: true }).click();
+    await nativePage.getByRole('button', { name: '撤销', exact: true }).click();
     await nativePage.waitForFunction(
       () =>
         window.__nativeMessages.findLast((m) => m.action === 'update')?.settings
@@ -505,6 +633,24 @@ import fs from 'node:fs/promises';
       ),
       start.settings,
     );
+    await nativeGain.fill('4');
+    await nativeGain.press('Enter');
+    await nativePage
+      .getByRole('button', { name: '恢复默认', exact: true })
+      .click();
+    await nativePage.waitForFunction(() => {
+      const settings = window.__nativeMessages.findLast(
+        (m) => m.action === 'update',
+      )?.settings;
+      return (
+        settings?.bands.length === 6 &&
+        settings.bands.every((b) => b.gain === 0) &&
+        settings.preamp === 0 &&
+        settings.autoPreamp &&
+        !settings.bypass
+      );
+    });
+    await assertDefaultEQ(nativePage);
     const spectrum = {
       frequencies: Array.from(
         { length: 192 },
@@ -621,6 +767,7 @@ import fs from 'node:fs/promises';
             'render',
             'manual tuning without measurement',
             'restore numeric edits, zeroing, keyboard shortcut, add/delete, preamp, measurement, target, full graph drag and automatic EQ',
+            'full EQ reset, flat gain curve, reload persistence, undo reset, retained measurement/target/presets and native reset settings',
             'parameter edit',
             'escape discards input',
             'bypass',
