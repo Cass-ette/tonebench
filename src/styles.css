@@ -140,6 +140,10 @@ button svg {
   justify-content: center;
   color: #becbd9;
 }
+.brand-mark img {
+  display: block;
+  flex-shrink: 0;
+}
 .brand-subtitle {
   font-size: 7px;
   display: block;

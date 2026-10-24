@@ -19,7 +19,7 @@ final class WebFiles: NSObject, WKURLSchemeHandler {
     let mime =
       [
         "html": "text/html", "js": "text/javascript", "css": "text/css", "svg": "image/svg+xml",
-        "json": "application/json",
+        "json": "application/json", "png": "image/png",
       ][file.pathExtension] ?? "application/octet-stream"
     task.didReceive(
       URLResponse(
@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
+    if let path = Bundle.main.path(forResource: "AppIcon", ofType: "icns") {
+      NSApp.applicationIconImage = NSImage(contentsOfFile: path)
+    }
     let menu = NSMenu()
     let appItem = NSMenuItem()
     menu.addItem(appItem)

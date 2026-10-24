@@ -569,7 +569,7 @@ export default function App() {
           }}
         >
           <span className="brand-mark">
-            <AudioLines size={22} strokeWidth={1.5} />
+            <img src="/app-icon.png" width="26" height="26" alt="" />
           </span>
           <span>
             ToneBench<span className="brand-subtitle">PERSONAL AUDIO LAB</span>

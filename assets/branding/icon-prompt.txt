@@ -1,0 +1,9 @@
+Use case: logo-brand
+Asset type: ToneBench macOS application icon, square 1024 x 1024 master artwork.
+Primary request: Design a refined, memorable icon for a serious headphone EQ and real-time spectrum analysis tool. A single compact audio-tuning emblem in the center, based on five vertical precision-cut bars with a deliberate rhythmic silhouette, like a tuning fork merged with a spectrum. The center bar is the tallest; outer bars are shorter. Strong, beautifully balanced silhouette, clearly legible at 32 pixels.
+Scene/backdrop: Full-bleed uniform near-black graphite square, approximately #1b1e23. The artwork itself fills the square; do not show it sitting on another background. No surrounding frame or perspective.
+Style/medium: Restrained industrial design, finely finished matte titanium, very subtle shallow relief and soft studio light. Crisp edges, no conspicuous texture. Front view, perfectly centered, generous negative space.
+Color palette: Graphite, platinum silver, and a very subtle desaturated ice-blue edge or central accent. Almost monochrome, understated and premium.
+Composition/framing: One unified emblem, taking approximately 56 percent of the width and 58 percent of the height. Straight-on, centered. Background continues unchanged all the way to the four square corners. Corner mask and app-icon padding will be applied separately.
+Text: None.
+Avoid: letters, words, numbers, musical notes, headphones, circles around the emblem, tiny controls, chart axes, gradients with bright color, orange, purple, neon, glow, glass bubbles, excessive chrome, decorative sparkles, complex illustration, stock-logo flourishes, mockups, watermarks.

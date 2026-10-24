@@ -126,4 +126,7 @@ scripts/smoke.mjs     桌面、手机与工作流浏览器检查
 src/native.ts         Web ↔ Swift 音频状态与参数桥接
 macos/                Swift / AppKit 应用与实时 C DSP
 scripts/build-mac.sh  本机 Mac 应用构建与签名
+macos/Resources/      Mac 应用图标（PNG / ICNS）
+assets/branding/      图标生成提示词与资源说明
+scripts/build-icons.py 图标尺寸与 Mac 图标打包（仅重制资源时需要 Pillow）
 ```
