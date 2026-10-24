@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   Activity,
   ArrowDownToLine,
@@ -23,6 +23,7 @@ import {
   SlidersHorizontal,
   Trash2,
   Upload,
+  Undo2,
   X,
 } from 'lucide-react';
 import FrequencyChart from './FrequencyChart';
@@ -46,6 +47,7 @@ import {
 import type { Band, Measurement, Preset, Target } from './audio';
 import { isNative, nativeMessage, useSystemAudio } from './native';
 import { uniqueId } from './identity';
+import { createHistory, historyReducer } from './history';
 
 type Modal = 'import' | 'export' | 'save' | 'presets' | 'help' | 'gear' | null;
 type Session = {
@@ -55,6 +57,7 @@ type Session = {
   preamp: number;
   manualMode: boolean;
 };
+type TuningState = Session & { autoPreamp: boolean; bypass: boolean };
 type Gear = { id: string; name: string; type: string; note: string };
 type ImportKind = 'measurement' | 'target';
 const PRESETS_KEY = 'tonebench.presets.v1';
@@ -178,12 +181,15 @@ function NumericInput({
 
 export default function App() {
   const [session] = useState(readSession);
-  const [measurement, setMeasurement] = useState(session.measurement);
-  const [target, setTarget] = useState<Target>(session.target);
-  const [bands, setBands] = useState<Band[]>(session.bands);
-  const [preamp, setPreamp] = useState(session.preamp);
-  const [manualMode, setManualMode] = useState(session.manualMode);
-  const [autoPreamp, setAutoPreamp] = useState(true);
+  const [history, dispatch] = useReducer(
+    historyReducer<TuningState>,
+    session,
+    (initial) => createHistory({ ...initial, autoPreamp: true, bypass: false }),
+  );
+  const { measurement, target, bands, preamp, manualMode, autoPreamp, bypass } =
+    history.current;
+  const changeTuning = (patch: Partial<TuningState>) =>
+    dispatch({ type: 'change', patch });
   const [presets, setPresets] = useState(readPresets);
   const [modal, setModal] = useState<Modal>(null);
   const [visible, setVisible] = useState<CurveVisibility>({
@@ -195,7 +201,6 @@ export default function App() {
   const [selected, setSelected] = useState<string | null>(
     session.bands[0]?.id ?? null,
   );
-  const [bypass, setBypass] = useState(false);
   const [fitCount, setFitCount] = useState(6);
   const [maxBoost, setMaxBoost] = useState(6);
   const [fitting, setFitting] = useState(false);
@@ -361,10 +366,56 @@ export default function App() {
     };
   }, [modal]);
 
-  const updateBand = (id: string, patch: Partial<Band>) =>
-    setBands((current) =>
-      current.map((b) => (b.id === id ? { ...b, ...patch } : b)),
-    );
+  const updateBand = (id: string, patch: Partial<Band>) => {
+    const band = bands.find((item) => item.id === id);
+    if (
+      !band ||
+      (Object.keys(patch) as (keyof Band)[]).every((key) =>
+        Object.is(band[key], patch[key]),
+      )
+    )
+      return;
+    changeTuning({
+      bands: bands.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    });
+  };
+  const restoreTuning = () => {
+    const previous = history.past.at(-1);
+    if (!previous || fitting) return;
+    dispatch({ type: 'undo' });
+    setSelected(previous.bands[0]?.id ?? null);
+    const measured = previous.measurement.points.length > 0;
+    if (hasMeasurement !== measured) {
+      setVisible({
+        measured,
+        target: true,
+        predicted: measured,
+        eq: !measured,
+      });
+    }
+    setToast('已还原上一步调音');
+  };
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement | null;
+      if (
+        modal ||
+        fitting ||
+        !history.past.length ||
+        event.defaultPrevented ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.shiftKey ||
+        event.altKey ||
+        event.key.toLowerCase() !== 'z' ||
+        element?.closest('input, textarea, select, [contenteditable="true"]')
+      )
+        return;
+      event.preventDefault();
+      restoreTuning();
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  });
   const persistPresets = (next: Preset[]) => {
     try {
       localStorage.setItem(PRESETS_KEY, JSON.stringify(next));
@@ -376,15 +427,21 @@ export default function App() {
     }
   };
   const load = (preset: Preset) => {
-    setMeasurement(preset.measurement ?? EMPTY_MEASUREMENT);
-    setManualMode(preset.measurement === null);
+    changeTuning({
+      measurement: preset.measurement ?? EMPTY_MEASUREMENT,
+      manualMode: preset.measurement === null,
+      target: preset.target,
+      bands: preset.bands,
+      preamp: preset.preamp,
+      autoPreamp: false,
+      bypass: false,
+    });
     setVisible({
       measured: preset.measurement !== null,
       target: true,
       predicted: preset.measurement !== null,
       eq: preset.measurement === null,
     });
-    setTarget(preset.target);
     if (!TARGETS.some((t) => t.id === preset.target.id)) {
       const nextTargets = [
         preset.target,
@@ -404,23 +461,21 @@ export default function App() {
         setStorageProblem(true);
       }
     }
-    setBands(preset.bands);
-    setPreamp(preset.preamp);
-    setAutoPreamp(false);
     setSelected(preset.bands[0]?.id ?? null);
-    setBypass(false);
     setModal(null);
     setToast(`已载入「${preset.name}」`);
   };
   const changeMeasurement = (next: Measurement) => {
-    setMeasurement(next);
-    setManualMode(false);
-    setVisible({ measured: true, target: true, predicted: true, eq: false });
     const reset = initialBands();
-    setBands(reset);
+    changeTuning({
+      measurement: next,
+      manualMode: false,
+      bands: reset,
+      autoPreamp: true,
+      bypass: false,
+    });
+    setVisible({ measured: true, target: true, predicted: true, eq: false });
     setSelected(reset[0].id);
-    setAutoPreamp(true);
-    setBypass(false);
   };
   const importFile = async (selectedFile: File) => {
     setImportError('');
@@ -464,7 +519,7 @@ export default function App() {
         } catch {
           stored = false;
         }
-        setTarget(next);
+        changeTuning({ target: next });
         setModal(null);
         setToast(
           stored
@@ -514,10 +569,8 @@ export default function App() {
           maxBoost,
           sampleRate,
         );
-        setBands(fitted);
+        changeTuning({ bands: fitted, autoPreamp: true, bypass: false });
         setSelected(fitted[0]?.id ?? null);
-        setAutoPreamp(true);
-        setBypass(false);
         setToast('EQ 已生成，可以继续微调各段参数');
       } catch {
         setToast('拟合未完成，请检查测量数据后重试。');
@@ -825,7 +878,7 @@ export default function App() {
                     <button
                       className={`bypass-button ${bypass ? 'engaged' : ''}`}
                       aria-pressed={bypass}
-                      onClick={() => setBypass(!bypass)}
+                      onClick={() => changeTuning({ bypass: !bypass })}
                     >
                       <span className="bypass-light" />
                       {bypass
@@ -854,6 +907,33 @@ export default function App() {
                     ))}
                     <span className="chart-scale">20 Hz — 20 kHz</span>
                   </div>
+                  <details className="curve-guide">
+                    <summary>
+                      <CircleHelp size={12} />
+                      曲线说明
+                    </summary>
+                    <dl>
+                      <div>
+                        <dt>实测曲线</dt>
+                        <dd>耳机测出来的频响，作为调音前的参考。</dd>
+                      </div>
+                      <div>
+                        <dt>目标曲线</dt>
+                        <dd>希望接近的参考频响，用于自动拟合。</dd>
+                      </div>
+                      <div>
+                        <dt>EQ 后预测</dt>
+                        <dd>实测曲线加上 EQ 调整量后，计算出的频响。</dd>
+                      </div>
+                      <div>
+                        <dt>EQ 增益</dt>
+                        <dd>各频率提升或衰减的量，0 dB 表示不调整。</dd>
+                      </div>
+                    </dl>
+                    {!hasMeasurement && (
+                      <p>尚未导入实测曲线，图上没有耳机当前的频响。</p>
+                    )}
+                  </details>
                   <FrequencyChart
                     measurement={measurement}
                     target={target}
@@ -864,6 +944,8 @@ export default function App() {
                     selected={selected}
                     onSelect={setSelected}
                     onChange={updateBand}
+                    onEditStart={() => dispatch({ type: 'begin' })}
+                    onEditEnd={() => dispatch({ type: 'end' })}
                   />
                   <div className="chart-footer">
                     <span>
@@ -893,11 +975,24 @@ export default function App() {
                     </div>
                     <div className="eq-actions">
                       <button
+                        className="text-button restore-button"
+                        title="撤销上一步调音（⌘Z / Ctrl+Z）"
+                        disabled={!history.past.length || fitting}
+                        onClick={restoreTuning}
+                      >
+                        <Undo2 size={12} />
+                        还原
+                      </button>
+                      <button
                         className="text-button"
+                        title="将所有滤波器增益设为 0 dB"
+                        disabled={
+                          bands.every((band) => band.gain === 0) || fitting
+                        }
                         onClick={() => {
-                          setBands((current) =>
-                            current.map((b) => ({ ...b, gain: 0 })),
-                          );
+                          changeTuning({
+                            bands: bands.map((b) => ({ ...b, gain: 0 })),
+                          });
                           setToast('各段增益已归零');
                         }}
                       >
@@ -909,7 +1004,7 @@ export default function App() {
                         disabled={bands.length >= 12}
                         onClick={() => {
                           const band = newBand();
-                          setBands([...bands, band]);
+                          changeTuning({ bands: [...bands, band] });
                           setSelected(band.id);
                         }}
                       >
@@ -1015,9 +1110,11 @@ export default function App() {
                                 className="icon-button delete-band"
                                 aria-label={`删除滤波器 ${index + 1}`}
                                 onClick={() =>
-                                  setBands(
-                                    bands.filter((b) => b.id !== band.id),
-                                  )
+                                  changeTuning({
+                                    bands: bands.filter(
+                                      (b) => b.id !== band.id,
+                                    ),
+                                  })
                                 }
                               >
                                 <X size={13} />
@@ -1070,7 +1167,7 @@ export default function App() {
                           const next = availableTargets.find(
                             (item) => item.id === e.target.value,
                           );
-                          if (next) setTarget(next);
+                          if (next) changeTuning({ target: next });
                         }}
                       >
                         {availableTargets.map((t) => (
@@ -1191,8 +1288,10 @@ export default function App() {
                         type="checkbox"
                         checked={autoPreamp}
                         onChange={(e) => {
-                          if (!e.target.checked) setPreamp(suggested);
-                          setAutoPreamp(e.target.checked);
+                          changeTuning({
+                            autoPreamp: e.target.checked,
+                            ...(!e.target.checked ? { preamp: suggested } : {}),
+                          });
                         }}
                       />
                       <span>自动保留余量</span>
@@ -1206,7 +1305,7 @@ export default function App() {
                           max={0}
                           step={0.1}
                           suffix="dB"
-                          onChange={setPreamp}
+                          onChange={(value) => changeTuning({ preamp: value })}
                         />
                       </div>
                     )}
@@ -1284,9 +1383,15 @@ export default function App() {
                   <button
                     className="button"
                     onClick={() => {
-                      setManualMode(true);
                       const initial = initialBands();
-                      setBands(initial);
+                      dispatch({
+                        type: 'reset',
+                        current: {
+                          ...history.current,
+                          manualMode: true,
+                          bands: initial,
+                        },
+                      });
                       setSelected(initial[0]?.id ?? null);
                       setVisible({
                         measured: false,
@@ -1737,7 +1842,12 @@ export default function App() {
                 </p>
                 <h3>测量与目标</h3>
                 <p>
-                  实测曲线用于显示调音前后的频响对比，目标曲线用于自动拟合。可选择内置目标，也可导入自己的目标曲线。
+                  实测曲线是耳机测出来的频响；目标曲线是调音时参考的频响。EQ
+                  后预测是实测加上 EQ 调整量后的计算结果。
+                </p>
+                <p>
+                  没有实测曲线时，可直接手动调音。此时 EQ
+                  增益曲线只显示各频率提升或衰减的量。
                 </p>
                 <p>
                   比较曲线时，请留意测量条件。不同夹具、佩戴和密封会影响结果，最终以试听为准。
@@ -1746,6 +1856,10 @@ export default function App() {
                 <p>
                   调整频率、增益与 Q 值，按 Enter 或移开焦点生效。打开“EQ
                   增益”后可拖动图上的控制点。
+                </p>
+                <p>
+                  点击“还原”可撤销上一步调音，支持连续还原；“归零”将各段增益设为
+                  0 dB。还原记录保留到本次使用结束。
                 </p>
                 <h3>音频与频谱</h3>
                 <p>

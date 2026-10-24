@@ -18,6 +18,8 @@ type Props = {
   selected: string | null;
   onSelect: (id: string) => void;
   onChange: (id: string, patch: Partial<Band>) => void;
+  onEditStart: () => void;
+  onEditEnd: () => void;
 };
 const W = 1000,
   H = 380,
@@ -46,6 +48,8 @@ export default function FrequencyChart({
   selected,
   onSelect,
   onChange,
+  onEditStart,
+  onEditEnd,
 }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const id = useId().replace(/:/g, '');
@@ -104,7 +108,9 @@ export default function FrequencyChart({
     }
   };
   const end = () => {
+    if (!drag.current) return;
     drag.current = null;
+    onEditEnd();
   };
   const tooltipLeft = hover ? clamp((hover.x / W) * 100 + 2, 8, 76) : 0;
   const hoverHasData =
@@ -130,6 +136,7 @@ export default function FrequencyChart({
         }}
         onPointerUp={end}
         onPointerCancel={end}
+        onLostPointerCapture={end}
         style={{ touchAction: drag.current ? 'none' : 'pan-y' }}
       >
         <defs>
@@ -241,6 +248,7 @@ export default function FrequencyChart({
                       event.clientY,
                     ).matrixTransform(svg.current!.getScreenCTM()!.inverse());
                     drag.current = { band: { ...band }, startY: point.y };
+                    onEditStart();
                     onSelect(band.id);
                   }}
                 >
@@ -271,6 +279,7 @@ export default function FrequencyChart({
               stroke="#a4aab3"
               strokeDasharray="3 4"
               opacity="0.55"
+              pointerEvents="none"
             />
           )}
         </g>
