@@ -7,9 +7,23 @@ export type FrequencyRegion = {
   cut: string;
 };
 
+export const INSTRUMENT_GROUPS = [
+  { id: 'voice', name: '人声' },
+  { id: 'strings', name: '弦乐' },
+  { id: 'keys-plucked', name: '键盘与弹拨' },
+  { id: 'winds', name: '管乐' },
+  { id: 'percussion', name: '鼓与打击' },
+  { id: 'traditional', name: '民乐' },
+  { id: 'electronic', name: '电子音色' },
+] as const;
+
+export type InstrumentGroup = (typeof INSTRUMENT_GROUPS)[number]['id'];
+
 type Instrument = {
   id: string;
   name: string;
+  group: InstrumentGroup;
+  aliases?: string[];
   regions: FrequencyRegion[];
 };
 
@@ -18,6 +32,7 @@ type Instrument = {
 export const INSTRUMENTS: Instrument[] = [
   {
     id: 'voice',
+    group: 'voice',
     name: '人声',
     regions: [
       {
@@ -56,6 +71,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'acoustic-guitar',
+    group: 'keys-plucked',
     name: '木吉他',
     regions: [
       {
@@ -94,6 +110,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'electric-guitar',
+    group: 'keys-plucked',
     name: '电吉他',
     regions: [
       {
@@ -132,6 +149,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'piano',
+    group: 'keys-plucked',
     name: '钢琴',
     regions: [
       {
@@ -170,6 +188,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'bass',
+    group: 'keys-plucked',
     name: '贝斯',
     regions: [
       {
@@ -208,6 +227,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'kick',
+    group: 'percussion',
     name: '底鼓',
     regions: [
       {
@@ -246,6 +266,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'snare',
+    group: 'percussion',
     name: '军鼓',
     regions: [
       {
@@ -284,6 +305,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'cymbals',
+    group: 'percussion',
     name: '镲片',
     regions: [
       {
@@ -314,6 +336,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'cello',
+    group: 'strings',
     name: '大提琴',
     regions: [
       {
@@ -352,6 +375,7 @@ export const INSTRUMENTS: Instrument[] = [
   },
   {
     id: 'violin',
+    group: 'strings',
     name: '小提琴',
     regions: [
       {
@@ -385,6 +409,656 @@ export const INSTRUMENTS: Instrument[] = [
         high: 12000,
         boost: '泛音更亮、更通透。',
         cut: '高音更柔和。',
+      },
+    ],
+  },
+  {
+    id: 'choir',
+    group: 'voice',
+    name: '合唱',
+    aliases: ['和声', '伴唱', '人声合唱'],
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 150,
+        high: 400,
+        boost: '声部更饱满，过多会堆积。',
+        cut: '减轻低中频的浑浊，也会削弱男低音的厚度。',
+      },
+      {
+        id: 'definition',
+        name: '咬字',
+        low: 1500,
+        high: 4000,
+        boost: '歌词和声部轮廓更清楚，过多会硬。',
+        cut: '合唱更柔和，过多会让歌词难辨。',
+      },
+      {
+        id: 'air',
+        name: '空气感',
+        low: 8000,
+        high: 14000,
+        boost: '呼吸与高频泛音更明显，也会带起底噪。',
+        cut: '缓和高频嘶声，也会减少空间细节。',
+      },
+    ],
+  },
+  {
+    id: 'viola',
+    group: 'strings',
+    name: '中提琴',
+    regions: [
+      {
+        id: 'body',
+        name: '温暖感',
+        low: 180,
+        high: 450,
+        boost: '琴体更温暖，过多会闷。',
+        cut: '减轻低中频堆积，过多会变薄。',
+      },
+      {
+        id: 'definition',
+        name: '清晰度',
+        low: 800,
+        high: 2500,
+        boost: '内声部的旋律更容易辨认，过多会有鼻音。',
+        cut: '缓和鼻音与紧张感，也会使旋律后退。',
+      },
+      {
+        id: 'bow',
+        name: '弓弦摩擦',
+        low: 2500,
+        high: 5000,
+        boost: '弓弦质感更明显，过多会粗糙。',
+        cut: '缓和拉弦的硬度和摩擦声。',
+      },
+    ],
+  },
+  {
+    id: 'double-bass',
+    group: 'strings',
+    name: '低音提琴',
+    aliases: ['倍大提琴', '大贝斯', '低音大提琴', 'contrabass', 'upright bass'],
+    regions: [
+      {
+        id: 'weight',
+        name: '低频重量',
+        low: 40,
+        high: 120,
+        boost: '低音更深厚，过多会轰。',
+        cut: '减轻低频压力，也会影响底鼓。',
+      },
+      {
+        id: 'mud',
+        name: '浑浊感',
+        low: 150,
+        high: 350,
+        boost: '琴体更浓厚，过多会盖住音符。',
+        cut: '减少低中频的闷与堆积。',
+      },
+      {
+        id: 'definition',
+        name: '音符轮廓',
+        low: 600,
+        high: 1800,
+        boost: '拨弦或拉弦的音高更好辨认。',
+        cut: '缓和中频的硬度，也可能失去旋律线。',
+      },
+      {
+        id: 'attack',
+        name: '触弦',
+        low: 2000,
+        high: 4500,
+        boost: '手指与弓弦的接触声更明显。',
+        cut: '减轻敲击和摩擦声。',
+      },
+    ],
+  },
+  {
+    id: 'electric-piano',
+    group: 'keys-plucked',
+    name: '电钢琴',
+    aliases: ['电子钢琴', 'rhodes', 'wurlitzer'],
+    regions: [
+      {
+        id: 'body',
+        name: '温暖感',
+        low: 120,
+        high: 400,
+        boost: '琴声更厚、更温暖，过多会闷。',
+        cut: '减少低中频堆积。',
+      },
+      {
+        id: 'definition',
+        name: '颗粒感',
+        low: 1000,
+        high: 3500,
+        boost: '敲击和旋律线更突出，过多会硬。',
+        cut: '缓和中频咬劲，也会让音符不够清楚。',
+      },
+      {
+        id: 'bell',
+        name: '铃声质感',
+        low: 4000,
+        high: 8000,
+        boost: '带铃声的音色更明亮；具体效果取决于所用音色。',
+        cut: '减轻高音的尖亮感。',
+      },
+    ],
+  },
+  {
+    id: 'harp',
+    group: 'keys-plucked',
+    name: '竖琴',
+    regions: [
+      {
+        id: 'body',
+        name: '琴体',
+        low: 100,
+        high: 350,
+        boost: '低音和琴体更饱满，过多会轰。',
+        cut: '减少低频共鸣和浑浊。',
+      },
+      {
+        id: 'pluck',
+        name: '拨弦轮廓',
+        low: 1500,
+        high: 4000,
+        boost: '每个音的起音更清楚。',
+        cut: '缓和拨弦的硬度。',
+      },
+      {
+        id: 'brilliance',
+        name: '泛音',
+        low: 5000,
+        high: 10000,
+        boost: '泛音与高音尾韵更亮。',
+        cut: '声音更柔和，也会减少弦声细节。',
+      },
+    ],
+  },
+  {
+    id: 'flute',
+    group: 'winds',
+    name: '长笛',
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 250,
+        high: 700,
+        boost: '中低音更饱满，过多会闷；高音演奏时可能不明显。',
+        cut: '缓和中低频浑浊，也会削弱低音的温暖感。',
+      },
+      {
+        id: 'presence',
+        name: '清晰度',
+        low: 1500,
+        high: 4000,
+        boost: '旋律更靠前，高音也可能更刺。',
+        cut: '缓和高音的硬度，过多会后退。',
+      },
+      {
+        id: 'breath',
+        name: '气声',
+        low: 5000,
+        high: 10000,
+        boost: '吹气声和泛音更明显。',
+        cut: '减轻气流嘶声，也会减少通透感。',
+      },
+    ],
+  },
+  {
+    id: 'clarinet',
+    group: 'winds',
+    name: '单簧管',
+    aliases: ['黑管'],
+    regions: [
+      {
+        id: 'body',
+        name: '温暖感',
+        low: 150,
+        high: 450,
+        boost: '低音更温暖饱满，过多会闷。',
+        cut: '减少低中频堆积。',
+      },
+      {
+        id: 'mid',
+        name: '鼻音',
+        low: 700,
+        high: 1800,
+        boost: '木管质感更浓，过多会有鼻音。',
+        cut: '缓和中频鼻音，也会改变木管的特色。',
+      },
+      {
+        id: 'definition',
+        name: '清晰度',
+        low: 2000,
+        high: 5000,
+        boost: '起音与高音更清楚，过多会尖。',
+        cut: '减轻簧片硬度和高音刺激感。',
+      },
+    ],
+  },
+  {
+    id: 'saxophone',
+    group: 'winds',
+    name: '萨克斯',
+    aliases: ['萨克斯管', 'sax'],
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 150,
+        high: 500,
+        boost: '管体更厚实，过多会闷；随萨克斯类型和音区变化。',
+        cut: '减少低中频堆积，过多会变薄。',
+      },
+      {
+        id: 'nasal',
+        name: '鼻音',
+        low: 700,
+        high: 1800,
+        boost: '中频个性更强，过多会有鼻音。',
+        cut: '缓和鼻音，也会让独奏不够突出。',
+      },
+      {
+        id: 'presence',
+        name: '清晰度',
+        low: 2000,
+        high: 5000,
+        boost: '旋律和簧片咬劲更明显，过多会刺。',
+        cut: '减轻簧片的硬度。',
+      },
+      {
+        id: 'breath',
+        name: '气声',
+        low: 5000,
+        high: 9000,
+        boost: '气流与高频细节更明显。',
+        cut: '缓和嘶声，也会减少明亮度。',
+      },
+    ],
+  },
+  {
+    id: 'trumpet',
+    group: 'winds',
+    name: '小号',
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 200,
+        high: 600,
+        boost: '中低音更饱满，过多会闷。',
+        cut: '减少低中频的拥挤。',
+      },
+      {
+        id: 'presence',
+        name: '穿透力',
+        low: 1500,
+        high: 4000,
+        boost: '旋律更有冲击力，过多会刺耳。',
+        cut: '缓和铜管的尖锐感，也会让小号后退。',
+      },
+      {
+        id: 'brilliance',
+        name: '金属亮度',
+        low: 4000,
+        high: 8000,
+        boost: '高频泛音更明亮。',
+        cut: '减轻金属毛刺和高音刺激感。',
+      },
+    ],
+  },
+  {
+    id: 'french-horn',
+    group: 'winds',
+    name: '圆号',
+    aliases: ['法国号', 'horn'],
+    regions: [
+      {
+        id: 'body',
+        name: '温暖感',
+        low: 150,
+        high: 500,
+        boost: '管体更温暖饱满，过多会闷。',
+        cut: '减轻低中频堆积。',
+      },
+      {
+        id: 'definition',
+        name: '清晰度',
+        low: 800,
+        high: 2500,
+        boost: '旋律与内声部更好辨认。',
+        cut: '缓和中频硬度，也可能使圆号更靠后。',
+      },
+      {
+        id: 'edge',
+        name: '铜管质感',
+        low: 2500,
+        high: 5000,
+        boost: '强奏的铜管质感更明显，过多会刺。',
+        cut: '缓和强奏的硬度。',
+      },
+    ],
+  },
+  {
+    id: 'trombone',
+    group: 'winds',
+    name: '长号',
+    aliases: ['伸缩号'],
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 100,
+        high: 350,
+        boost: '低音更厚重，过多会轰。',
+        cut: '减少低频堆积，也会削弱铜管重量。',
+      },
+      {
+        id: 'definition',
+        name: '清晰度',
+        low: 700,
+        high: 2000,
+        boost: '音符轮廓更明显。',
+        cut: '缓和中频的拥挤，过多会失去存在感。',
+      },
+      {
+        id: 'edge',
+        name: '铜管咬劲',
+        low: 2000,
+        high: 5000,
+        boost: '起音和强奏更有冲击力。',
+        cut: '减轻强奏的粗糙和刺耳感。',
+      },
+    ],
+  },
+  {
+    id: 'tom',
+    group: 'percussion',
+    name: '通鼓',
+    aliases: ['嗵鼓', '筒鼓', 'tom-tom'],
+    regions: [
+      {
+        id: 'body',
+        name: '鼓身',
+        low: 80,
+        high: 250,
+        boost: '鼓声更厚实；随鼓的大小和调音变化。',
+        cut: '减轻低频共鸣，过多会变薄。',
+      },
+      {
+        id: 'box',
+        name: '闷响',
+        low: 300,
+        high: 700,
+        boost: '鼓腔声更浓，过多会像敲纸箱。',
+        cut: '缓和闷响和箱体感。',
+      },
+      {
+        id: 'attack',
+        name: '鼓槌',
+        low: 2500,
+        high: 5000,
+        boost: '鼓点和过门更清楚。',
+        cut: '缓和鼓槌的硬度。',
+      },
+    ],
+  },
+  {
+    id: 'hand-percussion',
+    group: 'percussion',
+    name: '手鼓与沙锤',
+    aliases: ['康加', '邦戈', '铃鼓', 'shaker', 'tambourine', 'conga', 'bongo'],
+    regions: [
+      {
+        id: 'body',
+        name: '鼓身共鸣',
+        low: 150,
+        high: 500,
+        boost: '手鼓的鼓身更饱满；沙锤和铃鼓在这里可能不明显。',
+        cut: '减少手鼓的闷响。',
+      },
+      {
+        id: 'attack',
+        name: '敲击轮廓',
+        low: 1500,
+        high: 4000,
+        boost: '拍击与节奏轮廓更清楚。',
+        cut: '缓和拍击的硬度，也会让人声后退。',
+      },
+      {
+        id: 'sizzle',
+        name: '沙沙与铃声',
+        low: 5000,
+        high: 12000,
+        boost: '沙锤与铃鼓更醒目，过多会嘶。',
+        cut: '减轻高频沙沙声，也会使镲片变暗。',
+      },
+    ],
+  },
+  {
+    id: 'erhu',
+    group: 'traditional',
+    name: '二胡',
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 250,
+        high: 600,
+        boost: '琴体更饱满，过多会闷。',
+        cut: '减少低中频堆积，过多会变薄。',
+      },
+      {
+        id: 'presence',
+        name: '清晰度',
+        low: 1000,
+        high: 3000,
+        boost: '旋律和滑音更突出，过多会尖。',
+        cut: '缓和鼻音与尖锐感，也会让二胡后退。',
+      },
+      {
+        id: 'bow',
+        name: '弓弦摩擦',
+        low: 3000,
+        high: 6000,
+        boost: '拉弦质感更明显，过多会粗糙。',
+        cut: '减轻摩擦声，声音更柔和。',
+      },
+    ],
+  },
+  {
+    id: 'guzheng',
+    group: 'traditional',
+    name: '古筝',
+    aliases: ['筝'],
+    regions: [
+      {
+        id: 'body',
+        name: '琴体',
+        low: 100,
+        high: 400,
+        boost: '低弦和琴体更厚，过多会轰。',
+        cut: '减少低中频共鸣和浑浊。',
+      },
+      {
+        id: 'pluck',
+        name: '拨弦轮廓',
+        low: 1500,
+        high: 4000,
+        boost: '指甲触弦与旋律更清楚。',
+        cut: '缓和拨弦的硬度。',
+      },
+      {
+        id: 'brilliance',
+        name: '泛音与尾韵',
+        low: 5000,
+        high: 10000,
+        boost: '高弦泛音更亮，也会突出刮弦声。',
+        cut: '减轻刮弦和高频刺激感。',
+      },
+    ],
+  },
+  {
+    id: 'pipa',
+    group: 'traditional',
+    name: '琵琶',
+    regions: [
+      {
+        id: 'body',
+        name: '琴体',
+        low: 150,
+        high: 500,
+        boost: '琴体更厚实，过多会闷。',
+        cut: '减少低中频堆积。',
+      },
+      {
+        id: 'pluck',
+        name: '弹拨清晰度',
+        low: 1500,
+        high: 4000,
+        boost: '轮指与拨弦更清楚，过多会硬。',
+        cut: '缓和弹拨的敲击感。',
+      },
+      {
+        id: 'brilliance',
+        name: '弦声亮度',
+        low: 4000,
+        high: 8000,
+        boost: '弦声更亮，触弦细节也会更明显。',
+        cut: '减轻尖亮和刮弦声。',
+      },
+    ],
+  },
+  {
+    id: 'dizi',
+    group: 'traditional',
+    name: '竹笛',
+    aliases: ['笛子', '曲笛', '梆笛'],
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 300,
+        high: 800,
+        boost: '中低音更饱满；随笛子的调性和音区变化。',
+        cut: '减少中低频浑浊。',
+      },
+      {
+        id: 'presence',
+        name: '明亮度',
+        low: 1500,
+        high: 4000,
+        boost: '旋律更靠前，过多会尖。',
+        cut: '缓和高音的刺激感。',
+      },
+      {
+        id: 'membrane',
+        name: '笛膜与气声',
+        low: 4000,
+        high: 9000,
+        boost: '笛膜质感与气流声更明显。',
+        cut: '减轻高频嘶声，也会改变笛膜质感。',
+      },
+    ],
+  },
+  {
+    id: 'synth-lead',
+    group: 'electronic',
+    name: '合成器主音',
+    aliases: ['电子主音', 'lead', 'synth'],
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 150,
+        high: 500,
+        boost: '主音更厚，过多会闷；实际效果取决于音色。',
+        cut: '减少低中频堆积。',
+      },
+      {
+        id: 'presence',
+        name: '突出程度',
+        low: 1000,
+        high: 4000,
+        boost: '旋律更靠前，也可能盖过人声。',
+        cut: '缓和主音的压迫感。',
+      },
+      {
+        id: 'edge',
+        name: '高频亮度',
+        low: 4000,
+        high: 10000,
+        boost: '泛音和电子质感更亮，过多会刺。',
+        cut: '缓和尖锐与高频毛刺。',
+      },
+    ],
+  },
+  {
+    id: 'synth-pad',
+    group: 'electronic',
+    name: '氛围铺底',
+    aliases: ['铺底音色', '合成器铺底', 'pad', 'strings pad'],
+    regions: [
+      {
+        id: 'body',
+        name: '厚度',
+        low: 150,
+        high: 500,
+        boost: '背景更温暖厚实，过多会掩住其他声部。',
+        cut: '减轻背景的浑浊。',
+      },
+      {
+        id: 'presence',
+        name: '存在感',
+        low: 800,
+        high: 3000,
+        boost: '铺底更容易被听到，也可能遮挡人声。',
+        cut: '背景更靠后，但这个频段的其他声音也会一起后退。',
+      },
+      {
+        id: 'air',
+        name: '高频延伸',
+        low: 6000,
+        high: 14000,
+        boost: '高频纹理与尾音更明显。',
+        cut: '背景更柔和，过多会变暗。',
+      },
+    ],
+  },
+  {
+    id: 'synth-bass',
+    group: 'electronic',
+    name: '合成低音',
+    aliases: ['电子低音', 'sub bass', '808', 'synth bass'],
+    regions: [
+      {
+        id: 'sub',
+        name: '低频下潜',
+        low: 30,
+        high: 80,
+        boost: '低频更深，过多会轰；耳机与录音需要有对应的低频。',
+        cut: '减轻低频压力，也会削弱底鼓的重量。',
+      },
+      {
+        id: 'body',
+        name: '厚度',
+        low: 80,
+        high: 250,
+        boost: '低音更厚实，过多会混成一团。',
+        cut: '缓和低频堆积。',
+      },
+      {
+        id: 'definition',
+        name: '音符轮廓',
+        low: 500,
+        high: 2000,
+        boost: '有泛音的低音更好辨认；纯正弦低音在这里可能没有明显变化。',
+        cut: '缓和中频硬度，也可能使音符不够清楚。',
       },
     ],
   },

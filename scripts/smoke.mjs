@@ -87,11 +87,91 @@ import fs from 'node:fs/promises';
       '镲片',
       '大提琴',
       '小提琴',
+      '合唱',
+      '中提琴',
+      '低音提琴',
+      '电钢琴',
+      '竖琴',
+      '长笛',
+      '单簧管',
+      '萨克斯',
+      '小号',
+      '圆号',
+      '长号',
+      '通鼓',
+      '手鼓与沙锤',
+      '二胡',
+      '古筝',
+      '琵琶',
+      '竹笛',
+      '合成器主音',
+      '氛围铺底',
+      '合成低音',
     ]) {
       await guide.getByRole('button', { name, exact: true }).click();
       assert.equal(await page.locator('.guide-highlight').count(), 1);
       assert.equal(await restore.isDisabled(), true);
     }
+    const instrumentChoices = guide.getByRole('group', {
+      name: '选择声部',
+      exact: true,
+    });
+    assert.equal(await instrumentChoices.getByRole('button').count(), 30);
+    assert.ok(
+      (await guide.locator('.guide-current').innerText()).includes('30 类声部'),
+    );
+    for (const [category, count] of [
+      ['人声', 2],
+      ['弦乐', 4],
+      ['键盘与弹拨', 6],
+      ['管乐', 6],
+      ['鼓与打击', 5],
+      ['民乐', 4],
+      ['电子音色', 3],
+    ]) {
+      await guide
+        .getByRole('button', { name: `分类：${category}`, exact: true })
+        .click();
+      assert.equal(await instrumentChoices.getByRole('button').count(), count);
+      assert.equal(
+        await instrumentChoices.getByRole('button', { pressed: true }).count(),
+        1,
+      );
+      assert.equal(await page.locator('.guide-highlight').count(), 1);
+    }
+    const guideSearch = guide.getByRole('searchbox', {
+      name: '搜索乐器或人声',
+      exact: true,
+    });
+    for (const [query, name] of [
+      ['黑管', '单簧管'],
+      ['法国号', '圆号'],
+      ['rhodes', '电钢琴'],
+      ['二胡', '二胡'],
+      ['808', '合成低音'],
+      ['sax', '萨克斯'],
+    ]) {
+      await guideSearch.fill(query);
+      assert.equal(await instrumentChoices.getByRole('button').count(), 1);
+      await instrumentChoices
+        .getByRole('button', { name, exact: true })
+        .click();
+      assert.ok(
+        (await page.locator('.guide-readout').innerText()).includes(name),
+      );
+    }
+    await guideSearch.fill('不存在的乐器');
+    assert.equal(await instrumentChoices.getByRole('button').count(), 0);
+    await guide
+      .getByText('没有匹配的声部，换个名称试试。', { exact: true })
+      .waitFor();
+    await guideSearch.fill('');
+    assert.equal(await instrumentChoices.getByRole('button').count(), 30);
+    assert.equal(await restore.isDisabled(), true);
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem('tonebench.session.v1')),
+      beforeGuide,
+    );
     await guide.getByRole('button', { name: '大提琴', exact: true }).click();
     await guide
       .getByRole('button', { name: '清晰度 1–3 kHz', exact: true })
@@ -167,6 +247,13 @@ import fs from 'node:fs/promises';
     );
     for (let i = 0; i < 6; i++) await restore.click();
     assert.equal(await restore.isDisabled(), true);
+    await guide
+      .getByRole('button', { name: '分类：管乐', exact: true })
+      .click();
+    await guide.getByRole('button', { name: '萨克斯', exact: true }).click();
+    await guide
+      .getByRole('button', { name: '清晰度 2–5 kHz', exact: true })
+      .click();
     await page
       .locator('.response-panel')
       .screenshot({ path: 'test-results/frequency-guide-desktop.png' });
@@ -910,7 +997,7 @@ import fs from 'node:fs/promises';
           checks: [
             'render',
             'manual tuning without measurement',
-            'instrument/vocal ranges, logarithmic highlight, browsing leaves EQ and native audio unchanged, neutral filter creation, undo, 12-band limit and responsive guide',
+            '30 instrument/vocal entries, 7 categories, Chinese/English/alias search and empty results, logarithmic highlight, browsing leaves EQ and native audio unchanged, neutral filter creation, undo, 12-band limit and responsive guide',
             'restore numeric edits, zeroing, keyboard shortcut, add/delete, preamp, measurement, target, full graph drag and automatic EQ',
             'full EQ reset, flat gain curve, reload persistence, undo reset, retained measurement/target/presets and native reset settings',
             'parameter edit',

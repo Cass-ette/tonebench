@@ -1,6 +1,11 @@
-import { ChevronDown, Plus } from 'lucide-react';
-import { INSTRUMENTS, formatGuideRange } from './instrumentRanges';
-import type { FrequencyRegion } from './instrumentRanges';
+import { useState } from 'react';
+import { ChevronDown, Plus, Search } from 'lucide-react';
+import {
+  INSTRUMENTS,
+  INSTRUMENT_GROUPS,
+  formatGuideRange,
+} from './instrumentRanges';
+import type { FrequencyRegion, InstrumentGroup } from './instrumentRanges';
 
 type Props = {
   open: boolean;
@@ -23,6 +28,16 @@ export default function FrequencyGuide({
   onRegion,
   onAdd,
 }: Props) {
+  const [group, setGroup] = useState<InstrumentGroup | 'all'>('all');
+  const [query, setQuery] = useState('');
+  const search = query.trim().toLocaleLowerCase();
+  const results = INSTRUMENTS.filter(
+    (item) =>
+      (group === 'all' || item.group === group) &&
+      [item.name, item.id, ...(item.aliases ?? [])].some((name) =>
+        name.toLocaleLowerCase().includes(search),
+      ),
+  );
   const instrument =
     INSTRUMENTS.find((item) => item.id === instrumentId) ?? INSTRUMENTS[0];
   const region =
@@ -45,8 +60,51 @@ export default function FrequencyGuide({
       </button>
       {open && (
         <div id="frequency-guide-content" className="guide-content">
+          <div className="guide-browser-heading">
+            <div
+              className="guide-categories"
+              role="group"
+              aria-label="乐器分类"
+            >
+              {[{ id: 'all', name: '全部' }, ...INSTRUMENT_GROUPS].map(
+                (item) => (
+                  <button
+                    key={item.id}
+                    className="guide-category"
+                    aria-label={`分类：${item.name}`}
+                    aria-pressed={item.id === group}
+                    onClick={() => {
+                      setGroup(item.id as InstrumentGroup | 'all');
+                      setQuery('');
+                      if (item.id !== 'all' && item.id !== instrument.group)
+                        onInstrument(
+                          INSTRUMENTS.find(
+                            (candidate) => candidate.group === item.id,
+                          )!.id,
+                        );
+                    }}
+                  >
+                    {item.name}
+                  </button>
+                ),
+              )}
+            </div>
+            <label className="guide-search">
+              <Search size={12} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="搜索乐器或人声"
+                placeholder="搜索乐器 / 人声"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setGroup('all');
+                }}
+              />
+            </label>
+          </div>
           <div className="guide-instruments" role="group" aria-label="选择声部">
-            {INSTRUMENTS.map((item) => (
+            {results.map((item) => (
               <button
                 key={item.id}
                 className="guide-chip"
@@ -56,6 +114,14 @@ export default function FrequencyGuide({
                 {item.name}
               </button>
             ))}
+            {results.length === 0 && (
+              <p className="guide-empty">没有匹配的声部，换个名称试试。</p>
+            )}
+          </div>
+          <div className="guide-current">
+            <strong>{instrument.name}</strong>
+            <span>选择要调整的听感</span>
+            <small>{INSTRUMENTS.length} 类声部</small>
           </div>
           <div
             className="guide-regions"
