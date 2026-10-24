@@ -1148,7 +1148,7 @@ export default function App() {
                     <p className="quiet-note">
                       {hasMeasurement
                         ? '拟合结果可继续手动调整参数。'
-                        : '导入耳机实测曲线后可启用自动拟合。'}
+                        : '导入实测曲线后可自动拟合。'}
                     </p>
                   </div>
                 </section>
@@ -1255,9 +1255,7 @@ export default function App() {
                   ) : (
                     <>
                       <div className="fit-summary-header">手动模式</div>
-                      <p>
-                        当前没有耳机实测响应，无法计算曲线偏差或自动生成 EQ。
-                      </p>
+                      <p>导入实测曲线可查看频响预测，并使用自动拟合。</p>
                     </>
                   )}
                 </section>
@@ -1269,8 +1267,7 @@ export default function App() {
                 <Headphones size={26} strokeWidth={1.2} />
                 <h2>开始调音</h2>
                 <p>
-                  自动拟合需要耳机实测曲线和目标曲线。耳机型号不是必需条件；也可以直接按听感手动设置
-                  EQ。
+                  导入实测曲线与目标曲线，自动生成 EQ；也可直接按听感手动调音。
                 </p>
                 <div className="empty-workbench-actions">
                   <button
@@ -1310,9 +1307,7 @@ export default function App() {
                     浏览公开测量库 <ArrowUpRight size={13} />
                   </a>
                 </div>
-                <small>
-                  手动模式下可调参数并导出配置；不会显示耳机预测响应。
-                </small>
+                <small>支持保存预设与导出 EQ 配置。</small>
               </div>
             </section>
           )}
@@ -1371,7 +1366,7 @@ export default function App() {
             {modal === 'import' && (
               <div className="modal-body">
                 <p className="modal-description">
-                  导入公开测量或自己的曲线。原始数据保存在当前浏览器。
+                  导入实测曲线、目标曲线或 EQ 预设。数据保存在本机。
                 </p>
                 <div className="segmented-control import-kind-control">
                   <button
@@ -1627,8 +1622,7 @@ export default function App() {
             {modal === 'gear' && (
               <div className="modal-body">
                 <p className="modal-description">
-                  记录自己的耳机、DAC
-                  与耳放，以及搭配时的听感。所有记录保存在本机。
+                  记录器材、搭配与听感笔记，保存在本机。
                 </p>
                 <form
                   className="gear-form"
@@ -1735,35 +1729,34 @@ export default function App() {
                     <span>个人耳机调音工作台 · v0.2</span>
                   </div>
                 </div>
+                <h3>开始调音</h3>
+                <p>
+                  直接创建
+                  EQ，按听感调整；也可以导入实测曲线和目标曲线，自动生成 EQ
+                  后继续微调。
+                </p>
                 <h3>测量与目标</h3>
                 <p>
-                  当前目标为 Harman In-Ear 2019，数据来自 AutoEq
-                  项目；来源和许可见项目
-                  README。型号不是调音的必需条件。导入任意耳机的实测曲线可自动拟合或手动调整；没有实测曲线时也能直接手动创建
-                  EQ。
-                </p>
-                <h3>曲线与拟合</h3>
-                <p>
-                  导入测量在 1 kHz 对齐到 0 dB，点间按对数频率插值。均衡器用 RBJ
-                  双二阶滤波器、当前 {sampleRate / 1000} kHz
-                  采样率计算预测响应。自动拟合范围为 20 Hz–8 kHz，每段 Q 限制为
-                  0.35–4；不主动修正高频窄峰。
+                  实测曲线用于显示调音前后的频响对比，目标曲线用于自动拟合。可选择内置目标，也可导入自己的目标曲线。
                 </p>
                 <p>
-                  原始曲线与目标应来自相容的测量条件。不同夹具、佩戴与密封会影响结果；图表和
-                  RMS 偏差不能替代个人试听。
+                  比较曲线时，请留意测量条件。不同夹具、佩戴和密封会影响结果，最终以试听为准。
                 </p>
-                <h3>编辑与导出</h3>
+                <h3>参数调整</h3>
                 <p>
-                  输入参数后按 Enter 或移开焦点生效。打开“EQ
-                  增益”后可拖动图上控制点。
+                  调整频率、增益与 Q 值，按 Enter 或移开焦点生效。打开“EQ
+                  增益”后可拖动图上的控制点。
+                </p>
+                <h3>音频与频谱</h3>
+                <p>
                   {isNative()
-                    ? '开启系统 EQ 后，参数与旁路会实时应用到当前输出设备的声音。旁路保留前级衰减；停止系统 EQ 后恢复直出。'
-                    : '网页中的旁路只切换图表。Mac 应用可开启系统 EQ；也可导出 Equalizer APO 配置供其他软件使用。'}
+                    ? '开启系统 EQ 后，调音会应用到当前输出设备。实时频谱可查看 EQ 前后的频段电平。旁路保留前级衰减，停止系统 EQ 后恢复直出。'
+                    : '网页可编辑和导出 EQ。使用 Mac 应用可开启系统 EQ，实时处理其他应用的声音并查看频谱。'}
                 </p>
-                <h3>本地保存</h3>
+                <h3>保存与导出</h3>
+                <p>将调音设置保存为预设，或导出配置文件供其他软件使用。</p>
                 <p>
-                  草稿、测量、预设与器材记录保存在当前浏览器的本地存储中，不上传测量。清除浏览器数据会删除这些记录，请用
+                  草稿、测量、预设和器材记录保存在本机，不会上传。清除应用或浏览器数据会删除本地记录，请用
                   JSON 导出备份。
                 </p>
               </div>
