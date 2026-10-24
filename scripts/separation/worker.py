@@ -11,8 +11,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-MODEL = "955717e8"
-SOURCES = ("drums", "bass", "other", "vocals")
+MODEL = "5c90dfd2"
+SOURCES = ("drums", "bass", "other", "vocals", "guitar", "piano")
 MAX_SECONDS = 600
 decoder = None
 
@@ -105,7 +105,7 @@ def separate(args):
             raise ValueError("分离结果包含无效采样")
         sf.write(output / f"{name}.wav", samples.T, rate, subtype="FLOAT")
         stems.append({"id": name, "peak": float(np.abs(samples).max())})
-    manifest = {"model": "HTDemucs", "sampleRate": rate,
+    manifest = {"model": "htdemucs_6s", "sampleRate": rate,
                 "duration": length / rate, "frames": length,
                 "originalPeak": float(np.abs(audio).max()), "stems": stems}
     (output / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

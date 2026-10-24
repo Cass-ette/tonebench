@@ -13,7 +13,7 @@ public struct StemLevel {
 }
 
 public enum StemMix {
-  public static let ids = ["vocals", "drums", "bass", "other"]
+  public static let ids = ["vocals", "drums", "bass", "guitar", "piano", "other"]
   public static func amplitudes(_ levels: [String: StemLevel]) -> [String: Double] {
     let solo = levels.values.contains { $0.solo }
     return Dictionary(
@@ -71,7 +71,7 @@ public final class StemSession {
     return ["python", "ffmpeg"].allSatisfy {
       FileManager.default.isExecutableFile(atPath: config[$0] ?? "")
     }
-      && FileManager.default.fileExists(atPath: (config["models"] ?? "") + "/955717e8-8726e21a.th")
+      && FileManager.default.fileExists(atPath: (config["models"] ?? "") + "/5c90dfd2-34c22ccb.th")
   }
   public var busy: Bool { process != nil }
   public var outputFolder: URL? { phase == "ready" ? folder : nil }
@@ -214,6 +214,7 @@ public final class StemSession {
         let peak: Double
       }
       let duration: Double
+      let model: String
       let sampleRate: Double
       let frames: Int64
       let originalPeak: Double
@@ -221,9 +222,11 @@ public final class StemSession {
     }
     let manifest = try JSONDecoder().decode(
       Manifest.self, from: Data(contentsOf: output.appendingPathComponent("manifest.json")))
-    guard manifest.duration.isFinite, manifest.duration > 0, manifest.duration <= 600.001,
+    guard manifest.model == "htdemucs_6s",
+      manifest.duration.isFinite, manifest.duration > 0, manifest.duration <= 600.001,
       manifest.sampleRate == 44100, manifest.originalPeak.isFinite, manifest.originalPeak >= 0,
-      Set(manifest.stems.map { $0.id }) == Set(StemMix.ids), manifest.stems.count == 4,
+      Set(manifest.stems.map { $0.id }) == Set(StemMix.ids),
+      manifest.stems.count == StemMix.ids.count,
       manifest.stems.allSatisfy({ $0.peak.isFinite && $0.peak >= 0 })
     else { throw URLError(.cannotDecodeContentData) }
     sampleRate = manifest.sampleRate
@@ -271,7 +274,7 @@ public final class StemSession {
     players["original"]?.volume = original ? Float(attenuation) : 0
   }
   public func controls(_ rows: [[String: Any]], original: Bool) {
-    guard phase == "ready", rows.count == 4 else { return }
+    guard phase == "ready", rows.count == StemMix.ids.count else { return }
     var next: [String: StemLevel] = [:]
     for row in rows {
       guard let id = row["id"] as? String, StemMix.ids.contains(id), next[id] == nil,

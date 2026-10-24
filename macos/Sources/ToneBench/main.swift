@@ -340,6 +340,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
     stemCheckReport["separation"] = status
     DispatchQueue.main.async {
       if phase == "ready" {
+        let reportChange = self.stems.onChange
+        let adjusted: [[String: Any]] = StemMix.ids.map {
+          [
+            "id": $0, "gain": $0 == "guitar" ? 3.0 : ($0 == "piano" ? -3.0 : 0.0),
+            "muted": $0 == "piano", "solo": $0 == "guitar",
+          ]
+        }
+        self.stems.controls(adjusted, original: false)
+        self.stems.onChange = { value in self.stemCheckReport["sourceControls"] = value }
+        self.stems.publish()
+        self.stems.onChange = reportChange
         let muted: [[String: Any]] = StemMix.ids.map {
           ["id": $0, "gain": 0.0, "muted": true, "solo": false]
         }

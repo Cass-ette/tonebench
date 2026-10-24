@@ -16,6 +16,8 @@ const labels: Record<StemId, [string, string]> = {
   vocals: ['人声', 'VOCALS'],
   drums: ['鼓', 'DRUMS'],
   bass: ['贝斯', 'BASS'],
+  guitar: ['吉他', 'GUITAR'],
+  piano: ['钢琴', 'PIANO'],
   other: ['其他伴奏', 'OTHER'],
 };
 
@@ -90,7 +92,7 @@ export default function StemPanel() {
             <strong>{status.fileName || '选择本地音频'}</strong>
             <span>
               {ready
-                ? `HTDemucs · 4 个声部 · ${stemTime(status.duration)}`
+                ? `${status.stems.length} 个声部 · ${stemTime(status.duration)}`
                 : '支持 WAV、MP3、FLAC、M4A 等常见音频格式'}
             </span>
           </div>
@@ -243,6 +245,7 @@ export default function StemPanel() {
         <p>
           “其他伴奏”包含未单独分出的乐器。分离结果可能有串音或音色变化，独听时更容易察觉。
         </p>
+        <p>钢琴分离仍属实验功能，可能混入其他乐器，也可能漏掉部分琴声。</p>
         <p>
           此播放器暂只调整声部音量，不叠加工作台
           EQ。分离文件保存在本机缓存，重要结果请另存。

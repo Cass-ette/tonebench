@@ -7,7 +7,7 @@ final class StemSessionTests: XCTestCase {
   override func setUpWithError() throws {
     temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
-    try Data().write(to: temporary.appendingPathComponent("955717e8-8726e21a.th"))
+    try Data().write(to: temporary.appendingPathComponent("5c90dfd2-34c22ccb.th"))
     let config = [
       "python": "/usr/bin/python3", "ffmpeg": "/usr/bin/true", "models": temporary.path,
     ]
@@ -66,5 +66,31 @@ final class StemSessionTests: XCTestCase {
     XCTAssertFalse(s.available)
     s.load(temporary, preview: true)
     XCTAssertFalse(s.busy)
+  }
+  func testIncompleteSixSourceManifestIsRejectedAndRemoved() throws {
+    let s = try session(
+      worker: """
+        import json, pathlib, sys
+        output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
+        manifest = {'model': 'htdemucs_6s', 'duration': 1, 'sampleRate': 44100, 'frames': 44100,
+                    'originalPeak': 0.5, 'stems': [{'id': s, 'peak': 0.2}
+                    for s in ['drums', 'bass', 'other', 'vocals', 'guitar']]}
+        (output / 'manifest.json').write_text(json.dumps(manifest))
+        """
+    )
+    let done = expectation(description: "incomplete source set rejected")
+    s.onChange = { state in
+      if state["phase"] as? String == "error", !s.busy {
+        XCTAssertEqual(state["message"] as? String, "分离文件不完整，请重新导入")
+        done.fulfill()
+      }
+    }
+    s.load(temporary.appendingPathComponent("input.wav"), preview: true)
+    wait(for: [done], timeout: 10)
+    XCTAssertNil(s.outputFolder)
+    XCTAssertEqual(
+      try FileManager.default.contentsOfDirectory(
+        atPath: temporary.appendingPathComponent("outputs").path
+      ).count, 0)
   }
 }

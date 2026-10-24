@@ -76,12 +76,14 @@ try {
     playing: false,
     original: false,
     headroom: -8,
-    stems: ['vocals', 'drums', 'bass', 'other'].map((id) => ({
-      id,
-      gain: 0,
-      muted: false,
-      solo: false,
-    })),
+    stems: ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'].map(
+      (id) => ({
+        id,
+        gain: 0,
+        muted: false,
+        solo: false,
+      }),
+    ),
   };
   const emit = async (value) =>
     page.evaluate((s) => {
@@ -89,6 +91,57 @@ try {
       window.dispatchEvent(new CustomEvent('tonebench:stems', { detail: s }));
     }, value);
   await emit(status);
+  assert.equal(await page.locator('.stem-row').count(), 6);
+  await page.getByText('6 个声部 · 1:00', { exact: true }).waitFor();
+  for (const [id, label] of [
+    ['guitar', '吉他'],
+    ['piano', '钢琴'],
+  ]) {
+    await page
+      .getByRole('button', { name: `独听${label}`, exact: true })
+      .click();
+    await page.waitForFunction(
+      (source) =>
+        window.__messages.at(-1)?.stems?.find((row) => row.id === source)
+          ?.solo === true,
+      id,
+    );
+    const volume = page.getByRole('slider', {
+      name: `${label}音量`,
+      exact: true,
+    });
+    await volume.focus();
+    await volume.press('ArrowRight');
+    await page.waitForFunction(
+      (source) =>
+        window.__messages.at(-1)?.stems?.find((row) => row.id === source)
+          ?.gain === 0.5,
+      id,
+    );
+    await page
+      .getByRole('button', { name: `静音${label}`, exact: true })
+      .click();
+    await page.waitForFunction(
+      (source) =>
+        window.__messages.at(-1)?.stems?.find((row) => row.id === source)
+          ?.muted === true,
+      id,
+    );
+    assert.equal(
+      await page
+        .getByRole('slider', { name: '人声音量', exact: true })
+        .inputValue(),
+      '0',
+    );
+    await page.getByRole('button', { name: '还原音量', exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        window.__messages.at(-1)?.stems?.length === 6 &&
+        window.__messages
+          .at(-1)
+          .stems.every((row) => row.gain === 0 && !row.solo && !row.muted),
+    );
+  }
   const solo = page.getByRole('button', { name: '独听人声', exact: true });
   await solo.click();
   await page.waitForFunction(
@@ -184,7 +237,7 @@ try {
   assert.equal(await page.locator('.eq-table tbody tr').count(), 6);
   assert.deepEqual(errors, []);
   console.log(
-    'PASS: source controls, reset, original comparison, playback/seek bridge, cancel/error, native-only import, 2 viewport sizes; headphone EQ unchanged (bridge mocked).',
+    'PASS: six source controls including guitar/piano solo/mute/gain/reset, original comparison, playback/seek bridge, cancel/error, native-only import, 2 viewport sizes; headphone EQ unchanged (bridge mocked).',
   );
 } finally {
   await browser.close();

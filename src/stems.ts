@@ -1,4 +1,11 @@
-export const STEM_IDS = ['vocals', 'drums', 'bass', 'other'] as const;
+export const STEM_IDS = [
+  'vocals',
+  'drums',
+  'bass',
+  'guitar',
+  'piano',
+  'other',
+] as const;
 export type StemId = (typeof STEM_IDS)[number];
 export type StemControl = {
   id: StemId;
@@ -72,8 +79,8 @@ export function parseStemStatus(value: unknown): StemStatus | null {
     s.headroom > 0 ||
     s.headroom < -160 ||
     !Array.isArray(s.stems) ||
-    s.stems.length !== 4 ||
-    new Set(s.stems.map((r) => r?.id)).size !== 4 ||
+    s.stems.length !== STEM_IDS.length ||
+    new Set(s.stems.map((r) => r?.id)).size !== STEM_IDS.length ||
     s.stems.some(
       (r) =>
         !r ||
